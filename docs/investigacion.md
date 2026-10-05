@@ -1,0 +1,120 @@
+# Investigación y fuentes
+
+Proyecto: **helpdesk-net**. Mesa de ayuda full-stack para la atención de clientes de una entidad financiera ficticia: tickets con máquina de estados, prioridad ITIL (impacto × urgencia), SLA sobre calendario laboral ecuatoriano, adjuntos validados, notificaciones en tiempo real, reportes y sugerencia automática de categoría y equipo consumiendo la API de **nlp-tickets-es** (P27).
+
+Fecha de consulta de todas las fuentes: **2026-10-04**. Cuando la fuente era un registro de paquetes o una API (NuGet, MCR, Docker Hub, GitHub API) se consultó directamente y se anota lo que respondió. Las leyes se leyeron en su texto oficial; los resúmenes automáticos no se usaron como fuente.
+
+## 1. Plataforma .NET y librerías
+
+| # | Fuente (oficial / confiable) | URL | Consultada | Qué se tomó de aquí |
+|---|---|---|---|---|
+| 1 | Microsoft — .NET Support Policy | https://dotnet.microsoft.com/en-us/platform/support/policy/dotnet-core | 2026-10-04 | **.NET 10 es LTS**: lanzado el 11-nov-2025, soporte hasta el **14-nov-2028**, último parche **10.0.12** (8-sep-2026). .NET 8 y .NET 9 terminan soporte el **10-nov-2026**. .NET 11 está en RC1. Decisión: `net10.0` en todos los proyectos. |
+| 2 | Microsoft — Download .NET 10.0 | https://dotnet.microsoft.com/en-us/download/dotnet/10.0 | 2026-10-04 | SDK **10.0.401** (C# 14) con runtime y ASP.NET Core **10.0.12**. Se fija en `global.json`. |
+| 3 | NuGet (API `v3-flatcontainer`) | https://api.nuget.org/v3-flatcontainer/ | 2026-10-04 | Últimas versiones estables: EF Core / ASP.NET Core / SignalR client / Identity / JwtBearer / OpenApi / Mvc.Testing **10.0.12**; Npgsql.EntityFrameworkCore.PostgreSQL **10.0.3**; EFCore.NamingConventions **10.0.1**; Serilog.AspNetCore **10.0.0**; FluentValidation **12.1.1**; xunit.v3 **4.0.1**; xunit.runner.visualstudio **4.0.0**; Microsoft.NET.Test.Sdk **18.10.1**; Testcontainers.PostgreSql **4.15.0**; AwesomeAssertions **9.6.0**; NSubstitute **6.2.0**; coverlet **10.1.0**; WireMock.Net **2.18.0**; MudBlazor **9.11.0**; bUnit **2.11.3**; Microsoft.Playwright **1.63.0**; Scalar.AspNetCore **2.17.13**; Microsoft.Extensions.Http.Resilience y TimeProvider.Testing **10.10.0**; dotnet-ef **10.0.12**. |
+| 4 | Microsoft Artifact Registry (API de tags) | https://mcr.microsoft.com/v2/dotnet/aspnet/tags/list | 2026-10-04 | Imágenes disponibles: `dotnet/sdk:10.0.401-noble` y `dotnet/aspnet:10.0.12-noble-chiseled-extra`. |
+| 5 | .NET Blog — *Secure your .NET cloud apps with rootless Linux Containers* y *Announcing .NET Chiseled Containers* | https://devblogs.microsoft.com/dotnet/securing-containers-with-rootless/ | 2026-10-04 | Las imágenes traen el usuario no root `app` (UID 1654, variable `$APP_UID`). Las *chiseled* no tienen shell ni gestor de paquetes; la variante **`-extra`** conserva ICU y **tzdata**, necesarias para la zona horaria `America/Guayaquil`. Consecuencia: el healthcheck no puede usar `curl`; la API expone un modo `--healthcheck` propio. |
+| 6 | FluentAssertions — cambio de licencia (devclass, Inedo y la ficha de licencia en NuGet) | https://devclass.com/2025/01/16/another-open-source-project-shifts-to-restrictive-license-fluent-assertions-following-xceed-partnership | 2026-10-04 | Desde la **v8 (ene-2025)** FluentAssertions es comercial (Xceed, USD 129,95 por puesto) con licencia comunitaria solo para uso no comercial. |
+| 7 | GitHub — `AwesomeAssertions/AwesomeAssertions` | https://github.com/AwesomeAssertions/AwesomeAssertions | 2026-10-04 | Bifurcación comunitaria de FluentAssertions 7 con la **misma API** y licencia **Apache-2.0** permanente. Decisión: AwesomeAssertions en lugar de FluentAssertions 8 (la API es idéntica y el repo queda libre para cualquier uso). |
+| 8 | GitHub API — licencias de dependencias | https://api.github.com/repos/MudBlazor/MudBlazor | 2026-10-04 | MudBlazor **MIT**, bUnit **MIT**, Scalar **MIT**, Testcontainers .NET **MIT**, Playwright .NET **MIT**, coverlet **MIT**, WireMock.Net **Apache-2.0**, FluentValidation **Apache-2.0**, Serilog **Apache-2.0**, EFCore.NamingConventions **Apache-2.0**, Npgsql EF Core **PostgreSQL License**, xUnit **Apache-2.0**, NSubstitute **BSD-3-Clause**. Todas compatibles con MIT. No se usan MediatR ni AutoMapper (pasaron a licencia comercial en 2025): los mappers son explícitos. |
+| 9 | Microsoft Learn — *Build resilient HTTP apps* | https://learn.microsoft.com/en-us/dotnet/core/resilience/http-resilience | 2026-10-04 | `AddStandardResilienceHandler`: limitador, *timeout* total (30 s), reintentos exponenciales con *jitter* (3), *circuit breaker* y *timeout* por intento (10 s). Se usa para llamar a P27 sin que su caída afecte la creación de tickets. |
+| 10 | Microsoft Learn — *What is the TimeProvider class* y *Testing with FakeTimeProvider* | https://learn.microsoft.com/en-us/dotnet/standard/datetime/timeprovider-overview | 2026-10-04 | `TimeProvider` abstrae el reloj; `FakeTimeProvider` permite fijar y adelantar el tiempo en pruebas. Base de las pruebas del SLA y del monitor de vencimientos. |
+| 11 | Microsoft Learn — `Guid.CreateVersion7` y RFC 9562 (UUID) | https://learn.microsoft.com/en-us/dotnet/api/system.guid.createversion7?view=net-9.0 | 2026-10-04 | UUIDv7 ordenado por tiempo (milisegundos Unix + aleatorio): claves no enumerables con buena localidad en índices B-tree. |
+| 12 | Microsoft Learn — *SignalR authentication and authorization* | https://learn.microsoft.com/en-us/aspnet/core/signalr/authn-and-authz?view=aspnetcore-10.0 | 2026-10-04 | Los navegadores no pueden enviar `Authorization` en WebSockets/SSE, así que el token viaja en `access_token` del *query string* y se lee en `JwtBearerEvents.OnMessageReceived`. Advierte que muchos servidores registran el *query string*: el log de peticiones de la API omite el *query string*. |
+| 13 | Microsoft Learn — *Rate limiting middleware in ASP.NET Core* | https://learn.microsoft.com/en-us/aspnet/core/performance/rate-limit?view=aspnetcore-10.0 | 2026-10-04 | `AddRateLimiter`, particiones por IP o usuario, `RejectionStatusCode` (por defecto 503, se cambia a **429**). |
+| 14 | Microsoft Learn — *Secure ASP.NET Core Blazor WebAssembly* | https://learn.microsoft.com/en-us/aspnet/core/blazor/security/webassembly/?view=aspnetcore-10.0 | 2026-10-04 | Blazor WebAssembly usa **tokens** (no cookies) por diseño; la autorización del cliente es solo de interfaz (**toda autorización se repite en el servidor**). Para *refresh tokens* en WASM recomienda: expiración corta, **rotación** y expiración absoluta tras la cual se exige iniciar sesión otra vez. |
+| 15 | Microsoft Learn — *Enforce a Content Security Policy for ASP.NET Core Blazor* | https://learn.microsoft.com/en-us/aspnet/core/blazor/security/content-security-policy?view=aspnetcore-10.0 | 2026-10-04 | Política base para Blazor del lado del cliente: `script-src 'self' 'wasm-unsafe-eval'`, `object-src 'none'`, `base-uri 'self'`; `frame-ancestors` solo funciona como cabecera (no en `<meta>`). La CSP del front la emite nginx como cabecera. |
+| 16 | Microsoft Learn — *Configure ASP.NET Core Identity* | https://learn.microsoft.com/en-us/aspnet/core/security/authentication/identity-configuration?view=aspnetcore-10.0 | 2026-10-04 | `PasswordHasher` V3 usa PBKDF2 con **100 000 iteraciones por defecto** (configurable con `PasswordHasherOptions.IterationCount`). Bloqueo por defecto: **5 intentos, 5 minutos**. |
+| 17 | IETF — RFC 10017 *OAuth 2.0 for Browser-Based Applications* (BCP 212) | https://www.rfc-editor.org/info/rfc10017/ | 2026-10-04 | Describe tres arquitecturas (BFF, *token-mediating backend* y cliente en el navegador) y reconoce que ningún almacenamiento del navegador protege del todo frente a JavaScript malicioso. Justifica tokens de vida corta, CSP estricta y no persistir el *access token*. |
+
+## 2. Persistencia
+
+| # | Fuente | URL | Consultada | Qué se tomó de aquí |
+|---|---|---|---|---|
+| 18 | PostgreSQL — noticias de versiones | https://www.postgresql.org/about/news/postgresql-186-1711-1615-1519-1424-and-19-beta-3-released-3365/ | 2026-10-04 | Última versión **18.6** (13-ago-2026, corrige 27 CVE); PostgreSQL 18 tiene soporte hasta nov-2030. Imagen `postgres:18.6-alpine3.24`. |
+| 19 | Docker Hub — imagen oficial `postgres` | https://hub.docker.com/_/postgres | 2026-10-04 | Desde PostgreSQL 18 `PGDATA` es `/var/lib/postgresql/18/docker` y el volumen se monta en **`/var/lib/postgresql`** (montarlo en `/var/lib/postgresql/data` no persiste datos). |
+| 20 | Npgsql — *Concurrency Tokens* | https://www.npgsql.org/efcore/modeling/concurrency.html | 2026-10-04 | Una propiedad `uint` con `IsRowVersion()` se mapea a la columna de sistema **`xmin`**, que cambia en cada actualización: concurrencia optimista sin columnas extra (dos agentes no se pisan cambios). |
+| 21 | Microsoft Learn — *Applying Migrations* (EF Core) | https://learn.microsoft.com/en-us/ef/core/managing-schemas/migrations/applying | 2026-10-04 | Para producción recomienda **bundles** o **scripts SQL idempotentes**; aplicar en el arranque es aceptable con cuidado. Desde EF Core 9 `Migrate()` toma un **bloqueo de base de datos** que evita migraciones concurrentes. Nunca `EnsureCreated`. |
+| 22 | Microsoft Learn — *Managing Migrations* | https://learn.microsoft.com/en-us/ef/core/managing-schemas/migrations/managing | 2026-10-04 | `dotnet ef migrations has-pending-model-changes` (EF 8+) detecta cambios de modelo sin migración: se ejecuta en CI. |
+
+## 3. Gestión de incidentes (ITIL / ISO)
+
+| # | Fuente | URL | Consultada | Qué se tomó de aquí |
+|---|---|---|---|---|
+| 23 | ISO/IEC 20000-1:2018 *Service management system requirements* (revisada y confirmada en 2023) | https://www.iso.org/standard/70636.html | 2026-10-04 | La norma exige gestión de niveles de servicio (cl. 8.3.3) e incidentes (cl. 8.6.1): registrar, clasificar, **priorizar por impacto y urgencia**, escalar y resolver dentro de objetivos acordados. El texto completo es de pago: se usa el índice público. |
+| 24 | IT Process Maps (S. Kempter) — *Checklist Incident Priority*, basada en la plantilla *Incident Prioritization Guideline* de ITIL Service Operation y alineada con la práctica ITIL 4 *Incident management* | https://wiki.en.it-processmaps.com/index.php/Checklist_Incident_Priority | 2026-10-04 | Matriz **impacto × urgencia → prioridad 1–5** (Alta/Alta = 1, …, Baja/Baja = 5) y nombres de los niveles (Crítica, Alta, Media, Baja, Muy baja/Planificación). |
+| 25 | ServiceNow — documentación de *Priority lookup rules* (Incident Management) | https://docs.servicenow.com/bundle/newyork-it-service-management/page/product/incident-management/task/def-prio-lookup-rules.html | 2026-10-04 | La prioridad es de **solo lectura** y se calcula desde impacto y urgencia con una tabla de búsqueda; por defecto 1-Alto + 1-Alto = 1-Crítica y Bajo + Bajo = 5-Planificación. Coincide con la fuente 24. |
+| 26 | ISO 10004:2018 *Customer satisfaction — Guidelines for monitoring and measuring* (confirmada en 2023) | https://www.iso.org/standard/71582.html | 2026-10-04 | Marco para medir la satisfacción del cliente externo con instrumentos definidos. Base de la encuesta de satisfacción (escala 1–5) al cerrar el ticket. |
+
+## 4. Calendario laboral de Ecuador
+
+| # | Fuente | URL | Consultada | Qué se tomó de aquí |
+|---|---|---|---|---|
+| 27 | Código del Trabajo (codificación vigente), arts. 47 y 50 — textos en Derecho Ecuador | https://derechoecuador.com/jornadas-de-trabajo/ | 2026-10-04 | Jornada máxima de **8 horas diarias y 40 semanales**; **sábado y domingo** son de descanso obligatorio. Base del horario laboral lunes–viernes del calendario de SLA. |
+| 28 | Registro Oficial Suplemento **906** (20-dic-2016), Ley Orgánica Reformatoria a la LOSEP y al Código del Trabajo, art. 3 (reforma del **art. 65** del Código del Trabajo) | https://derechoecuador.com/registro-oficial-no-906-martes-20-de-diciembre-de-2016-suplemento/ | 2026-10-04 | Feriados nacionales: 1 de enero, lunes y martes de carnaval, viernes santo, 1 y 24 de mayo, 10 de agosto, 9 de octubre, 2 y 3 de noviembre, 25 de diciembre. **Traslados**: martes → lunes anterior; miércoles o jueves → viernes de la misma semana; sábado → viernes anterior; domingo → lunes siguiente. No se trasladan el 1 de enero, el 25 de diciembre ni el martes de carnaval. |
+| 29 | Viceministerio de Turismo — calendario oficial de feriados 2026 (publicado en El Comercio, 2025) | https://www.elcomercio.com/actualidad/negocios/ecuador-define-el-calendario-oficial-de-feriados-nacionales-para-2026/ | 2026-10-04 | Días de descanso 2026: 1 ene; 16 y 17 feb (carnaval); 3 abr (viernes santo); 1 may; **25 may** (traslado del domingo 24); 10 ago; 9 oct; 2 y 3 nov; 25 dic. El portal turismo.gob.ec no respondió (DNS) el día de la consulta. |
+| 30 | LEXIS — *Gobierno suspende jornada laboral del 2 de enero de 2026* (Decreto Ejecutivo **249**, 17-dic-2025) | https://www.lexis.com.ec/noticias/gobierno-suspende-jornada-laboral-del-2-de-enero-de-2026-para-fomentar-el-turismo-interno | 2026-10-04 | El **2 de enero de 2026** es descanso nacional **no recuperable** para los sectores público y privado (los servicios esenciales, incluida la banca, mantienen turnos mínimos). |
+| 31 | IANA Time Zone Database 2026e — archivo `southamerica` | https://github.com/eggert/tz/blob/main/southamerica | 2026-10-04 | `America/Guayaquil` = **UTC−05:00**; Ecuador no aplica horario de verano desde 1993. |
+
+## 5. Seguridad
+
+| # | Fuente | URL | Consultada | Qué se tomó de aquí |
+|---|---|---|---|---|
+| 32 | OWASP Top 10:2025 | https://top10.owasp.org/2025 | 2026-10-04 | A01 Broken Access Control, A02 Security Misconfiguration, A03 Software Supply Chain Failures, A04 Cryptographic Failures, A05 Injection, A06 Insecure Design, A07 Authentication Failures, A08 Software or Data Integrity Failures, A09 Security Logging and Alerting Failures, **A10 Mishandling of Exceptional Conditions**. Matriz de controles en el README. |
+| 33 | OWASP API Security Top 10:2023 | https://owasp.org/API-Security/editions/2023/en/0x11-t10/ | 2026-10-04 | API1 BOLA, API2 autenticación, API3 BOPLA, API4 consumo de recursos, API5 BFLA, API6 flujos sensibles, API7 SSRF, API8 configuración, API9 inventario, **API10 consumo inseguro de APIs** (aplica a la llamada a P27). |
+| 34 | OWASP — *File Upload Cheat Sheet* | https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html | 2026-10-04 | Lista blanca de extensiones, no confiar en `Content-Type`, validar la **firma del archivo**, nombre aleatorio generado por el servidor, almacenar **fuera del webroot**, límites de tamaño, autorización en la descarga, evitar ZIP (y por tanto Office, que es ZIP) y antivirus/CDR cuando sea posible. |
+| 35 | OWASP — *Password Storage Cheat Sheet* | https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html | 2026-10-04 | PBKDF2-HMAC-SHA512 con **220 000 iteraciones** (SHA-256: 600 000). Como Identity V3 usa HMAC-SHA512 y por defecto 100 000, se sube `IterationCount` a 220 000. |
+| 36 | NIST SP 800-63B-4 *Digital Identity Guidelines — Authentication* | https://pages.nist.gov/800-63-4/sp800-63b.html | 2026-10-04 | Contraseñas como único factor: **mínimo 15 caracteres**, máximo permitido de al menos 64, **sin reglas de composición** y comparación contra una **lista de contraseñas comunes**. |
+| 37 | IETF — RFC 9700 *Best Current Practice for OAuth 2.0 Security* | https://www.rfc-editor.org/info/rfc9700/ | 2026-10-04 | Los *refresh tokens* de clientes públicos **deben** estar ligados al emisor o **rotarse** (§4.14); la reutilización de un token ya rotado indica robo y revoca la familia. |
+
+## 6. Protección de datos personales (Ecuador)
+
+| # | Fuente | URL | Consultada | Qué se tomó de aquí |
+|---|---|---|---|---|
+| 38 | **LOPDP** — Ley Orgánica de Protección de Datos Personales, Registro Oficial Suplemento 459 (26-may-2021), texto publicado por el Consejo de Comunicación | https://consejodecomunicacion.gob.ec/wp-content/uploads/downloads/2021/07/lotaip/Ley%20Org%C3%A1nica%20de%20Protecci%C3%B3n%20de%20Datos%20Personales.pdf | 2026-10-04 | Art. 10 e) **pertinencia y minimización**, i) **conservación** limitada con plazos de supresión, j) **seguridad** según el estado de la técnica. Arts. 13–15: acceso, rectificación y **eliminación** atendidos en **15 días**. Art. 20: derecho a no ser objeto de decisiones **basadas única o parcialmente en valoraciones automatizadas** (explicación, impugnación). Art. 34: el **encargado** trata datos solo por contrato e instrucciones del responsable. Art. 37: medidas como **anonimización, seudonimización o cifrado**. Art. 39: protección **desde el diseño y por defecto**. Art. 43: notificar vulneraciones a la Autoridad en **5 días** (el encargado al responsable en 2). Art. 46: al titular en **3 días** si hay riesgo. |
+| 39 | Reglamento General de la LOPDP — Decreto Ejecutivo **904**, Tercer Suplemento del R.O. 435 (13-nov-2023) | https://www.gob.ec/regulaciones/reglamento-general-ley-organica-proteccion-datos-personales-0 | 2026-10-04 | Desarrolla la ley y aplica a responsables y encargados públicos y privados. Se cita como marco; el diseño se apoya en los artículos de la ley. |
+
+## 7. Despliegue gratuito
+
+| # | Fuente | URL | Consultada | Qué se tomó de aquí |
+|---|---|---|---|---|
+| 40 | Render — *Deploy for Free* | https://render.com/docs/free | 2026-10-04 | Web services gratis: se duermen tras **15 min** sin tráfico (HTTP o mensajes WebSocket), **750 h/mes por workspace**, **sistema de archivos efímero sin discos persistentes**, una sola instancia. **Static sites gratis** y fuera del cupo de horas. Postgres gratis: 1 GB y **expira a los 30 días**. |
+| 41 | Render — *Free web services now remain active while receiving WebSocket messages* | https://render.com/changelog/free-web-services-now-remain-active-while-receiving-websocket-messages | 2026-10-04 | SignalR por WebSocket mantiene despierta la API mientras haya mensajes. |
+| 42 | Neon — *Plans* y *Pricing* | https://neon.com/pricing | 2026-10-04 | Free: **1 GB por proyecto** (20 GB por cuenta), **100 CU-h por proyecto**, hasta 100 proyectos, *scale to zero* a los 5 min, **sin tarjeta**. (Las reglas del portafolio decían 0,5 GB: el límite subió.) |
+| 43 | Neon — *Postgres version support policy* | https://neon.com/docs/postgresql/postgres-version-policy | 2026-10-04 | Soporta Postgres **14 a 18**: la misma versión mayor (18) en local y en Neon. |
+
+## 8. Integración con P27 (nlp-tickets-es)
+
+| # | Fuente | URL | Consultada | Qué se tomó de aquí |
+|---|---|---|---|---|
+| 44 | Repositorio propio `nlp-tickets-es` (P27): `src/nlp_tickets/schemas/tickets.py`, `domain/enums.py`, `data/catalog/*.csv`, `docs/api.http` | https://github.com/DiegoFranciscoG/nlp-tickets-es | 2026-10-04 | Contrato: `POST /api/v1/classify` con `X-API-Key` (rol `client`), cuerpo `{text (3–5000), channel, external_ref, persist, explain}`; respuesta con `category`, `team`, `urgency (low/medium/high)`, puntajes, `decision (auto_route/human_review)`, `review_reasons`, `prediction_id` y versión del modelo. `POST /api/v1/feedback` (rol `reviewer`) para correcciones. Catálogo: 9 categorías y 6 equipos (códigos reutilizados como catálogo del helpdesk). P27 anonimiza el texto antes de guardarlo. |
+
+## Reglas de negocio derivadas
+
+| Regla | Descripción | Fuentes |
+|---|---|---|
+| R1 | Prioridad = matriz impacto × urgencia (1 = Alta). Con esa numeración la matriz equivale a `prioridad = impacto + urgencia − 1`, que la base valida con un `CHECK`. La prioridad nunca se edita a mano. | 23, 24, 25 |
+| R2 | Cada ticket toma una regla de SLA por prioridad y nivel de servicio del cliente (la más específica gana) con objetivos de **primera respuesta** y **resolución** medidos sobre un calendario. | 23 + supuesto S1 |
+| R3 | Calendario de oficina: lunes a viernes 08:00–13:00 y 14:00–17:00 (8 h), zona `America/Guayaquil`. P1 usa un calendario 24×7. | 27, 31 + supuesto S2 |
+| R4 | Los feriados nacionales 2026 se cargan con su base legal y no cuentan como tiempo hábil. Son administrables para cargar años siguientes cuando se publique el calendario oficial. | 28, 29, 30 |
+| R5 | Máquina de estados: Nuevo → Asignado → En proceso → Resuelto → Cerrado, con **En espera** (pausa el reloj), **reapertura** desde Resuelto, **transferencia** a otra cola (vuelve a Nuevo) y **Cancelado** con motivo. Cerrado y Cancelado son finales. | 23 + enunciado + supuesto S3 |
+| R6 | El reloj de resolución se pausa en *En espera* y en *Resuelto*; al reanudar o reabrir se suma el tiempo hábil pausado al vencimiento. | 23 + supuesto S3 |
+| R7 | Primera respuesta = primer comentario público de un agente o paso a *En proceso*, lo que ocurra primero. | supuesto S4 |
+| R8 | Escalamiento: al **75 %** del objetivo se avisa al asignado (o a los líderes del equipo si no hay asignado); al vencer se marca el incumplimiento, se sube el nivel de escalamiento y se avisa a líderes y supervisores (escalamiento jerárquico). Transferir de cola es el escalamiento funcional. | 23, 24 |
+| R9 | Un ticket resuelto se cierra solo a los **3 días hábiles** si el cliente no lo reabre. | supuesto S5 |
+| R10 | Adjuntos: PDF, PNG, JPEG y TXT; máx. 5 MB y 10 por ticket; firma binaria verificada; nombre interno aleatorio; fuera de la base y del webroot; descarga solo autorizada, como `attachment` y con `nosniff`. | 34 |
+| R11 | Contraseñas de 15 a 128 caracteres sin reglas de composición, contra lista de comunes; PBKDF2-SHA512 con 220 000 iteraciones; bloqueo de 15 min tras 5 fallos; límite de 5 intentos de login por minuto e IP. | 16, 35, 36 |
+| R12 | Sesión: *access token* JWT de 15 min solo en memoria del navegador; *refresh token* opaco, guardado como hash, rotado en cada uso, con expiración absoluta de 8 h y revocación de la familia si se reutiliza. | 14, 17, 37 |
+| R13 | LOPDP: sin cédula ni RUC de personas naturales; aviso de privacidad aceptado por el cliente; anonimización del cliente a pedido (art. 15, 15 días); la sugerencia de IA **nunca se aplica sola** (art. 20): un agente la acepta o corrige; P27 actúa como encargado (art. 34) y anonimiza antes de persistir. | 38, 44 |
+| R14 | Satisfacción: encuesta 1–5 una sola vez por ticket, por su cliente, en Resuelto o Cerrado. CSAT % = respuestas 4 o 5 / total. | 26 + supuesto S6 |
+| R15 | Reportes: tiempo medio de primera respuesta y de resolución en **horas hábiles**, cumplimiento de SLA por prioridad, CSAT y carga por agente. | 23, 24 |
+
+## Supuestos (no verificables con una fuente oficial gratuita)
+
+- **S1 — Objetivos de SLA.** ITIL y la ISO 20000 exigen objetivos acordados pero no fijan valores. Se siembran estos (configurables por API): P1 30 min / 4 h (24×7); P2 1 h / 8 h hábiles; P3 4 h / 3 días hábiles; P4 8 h / 5 días hábiles; P5 2 días / 10 días hábiles; el nivel *premium* reduce P1–P3.
+- **S2 — Horario de oficina** 08:00–17:00 con almuerzo de 13:00 a 14:00. El Código del Trabajo limita la jornada pero no fija el horario de cada empresa.
+- **S3 — Estados adicionales.** *En espera*, *Cancelado* y la transferencia no están en el enunciado; se agregan porque la gestión de incidentes los necesita (pausar el reloj mientras se espera al cliente, anular duplicados y escalar funcionalmente).
+- **S4 — Definición de primera respuesta.** No hay definición normativa; se adopta la usada por las herramientas de mesa de ayuda.
+- **S5 — Cierre automático** a los 3 días hábiles.
+- **S6 — Fórmula de CSAT** (porcentaje de 4 y 5). La ISO 10004 orienta el proceso, no la fórmula.
+- **S7 — Feriados 2027.** El calendario oficial 2027 aún no se publica (se publica cerca de diciembre). No se siembran fechas inventadas: un administrador las agrega por API cuando salgan.
+- **S8 — Feriados locales** (p. ej. fundación de Quito o Cuenca) no se siembran; el modelo permite un calendario por ciudad.
