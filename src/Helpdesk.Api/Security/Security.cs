@@ -62,8 +62,6 @@ internal sealed class HttpCurrentUser(IHttpContextAccessor accessor, IUserDirect
     public IReadOnlyCollection<string> Scopes =>
         Principal?.FindFirst(HelpdeskClaims.Scope)?.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries) ?? [];
 
-    public string? PrivacyNoticeVersion => Principal?.FindFirst(HelpdeskClaims.PrivacyNotice)?.Value;
-
     public Actor Actor => IsAuthenticated ? new Actor(UserId, Role) : Actor.SystemActor;
 
     public async Task<AccessContext> GetAccessAsync(CancellationToken cancellationToken)

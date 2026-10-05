@@ -45,9 +45,10 @@ public sealed partial class TicketService(
     {
         ArgumentNullException.ThrowIfNull(request);
         var access = await currentUser.GetAccessAsync(cancellationToken);
-        if (access.Role == ActorRole.Customer && currentUser.PrivacyNoticeVersion != PrivacyNotice.CurrentVersion)
+        if (access.Role == ActorRole.Customer && await users.GetPrivacyNoticeVersionAsync(currentUser.UserId, cancellationToken) != PrivacyNotice.CurrentVersion)
         {
-            // LOPDP arts. 10 c y 12: el titular conoce el tratamiento antes de entregar sus datos.
+            // LOPDP arts. 10 c y 12: el titular conoce el tratamiento antes de entregar sus datos. Se consulta la base y no
+            // el token: el access token emitido antes de aceptar sigue vigente hasta 15 minutos.
             throw new BusinessRuleException("privacy_notice_required", "Acepta el aviso de privacidad antes de abrir un ticket.");
         }
 

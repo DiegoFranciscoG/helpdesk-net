@@ -21,6 +21,9 @@ internal sealed class UserDirectory(HelpdeskDbContext db) : IUserDirectory
         return await db.Users.AsNoTracking().Where(u => ids.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.FullName, cancellationToken);
     }
 
+    public Task<string?> GetPrivacyNoticeVersionAsync(Guid userId, CancellationToken cancellationToken) =>
+        db.Users.AsNoTracking().Where(u => u.Id == userId).Select(u => u.PrivacyNoticeVersion).FirstOrDefaultAsync(cancellationToken);
+
     public async Task<IReadOnlySet<Guid>> GetTeamIdsAsync(Guid userId, CancellationToken cancellationToken) =>
         (await db.TeamMembers.AsNoTracking().Where(m => m.UserId == userId).Select(m => m.TeamId).ToListAsync(cancellationToken)).ToHashSet();
 

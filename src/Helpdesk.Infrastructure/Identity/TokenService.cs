@@ -76,7 +76,6 @@ public static class HelpdeskClaims
     public const string CustomerId = "customer_id";
     public const string Scope = "scope";
     public const string ClientId = "client_id";
-    public const string PrivacyNotice = "privacy";
 }
 
 /// <summary>Emite JWT HS256 de vida corta y refresh tokens opacos de 256 bits.</summary>
@@ -97,11 +96,6 @@ public sealed class TokenService(IOptions<JwtOptions> options, TimeProvider cloc
         if (user.CustomerId is { } customerId)
         {
             claims.Add(new Claim(HelpdeskClaims.CustomerId, customerId.ToString()));
-        }
-
-        if (!string.IsNullOrEmpty(user.PrivacyNoticeVersion))
-        {
-            claims.Add(new Claim(HelpdeskClaims.PrivacyNotice, user.PrivacyNoticeVersion));
         }
 
         return Create(claims, options.Value.AccessTokenMinutes);

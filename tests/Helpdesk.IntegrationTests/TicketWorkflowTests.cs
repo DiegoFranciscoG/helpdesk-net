@@ -18,10 +18,13 @@ public sealed class TicketWorkflowTests(HelpdeskFixture fixture)
 
         var before = await client.PostJsonAsync("/api/v1/tickets", new CreateTicketRequest { Title = "Consulta", Description = "Necesito ayuda con mi cuenta." });
         var consent = await client.PostJsonAsync("/api/v1/auth/privacy-consent", new PrivacyConsentRequest { Version = PrivacyNotice.CurrentVersion });
+        // Mismo access token, emitido antes de aceptar: la API consulta la base, no un claim desactualizado.
+        var after = await client.PostJsonAsync("/api/v1/tickets", new CreateTicketRequest { Title = "Consulta", Description = "Necesito ayuda con mi cuenta." });
 
         before.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
         (await before.ProblemCodeAsync()).Should().Be("privacy_notice_required");
         (await consent.ReadAsync<CurrentUserDto>()).PrivacyNoticeAccepted.Should().BeTrue();
+        after.StatusCode.Should().Be(HttpStatusCode.Created);
     }
 
     [Fact]
