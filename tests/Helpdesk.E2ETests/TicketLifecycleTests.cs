@@ -27,6 +27,7 @@ public sealed partial class TicketLifecycleTests(BrowserFixture fixture)
         await customer.GotoAsync("tickets/nuevo");
         await customer.GetByLabel("Título").FillAsync(title);
         await customer.GetByLabel("Describe el problema").FillAsync("Hice una transferencia a un proveedor esta mañana y sigue en estado pendiente.");
+        await fixture.ScreenshotAsync(customer, "flujo-1");
         await customer.GetByRole(AriaRole.Button, new() { Name = "Registrar ticket" }).ClickAsync();
         await customer.WaitForURLAsync(TicketUrl());
         await Expect(customer.GetByText("Nuevo", new() { Exact = true }).First).ToBeVisibleAsync();
@@ -34,12 +35,14 @@ public sealed partial class TicketLifecycleTests(BrowserFixture fixture)
         // Sin recargar: la lista de la supervisora se actualiza por SignalR.
         var row = supervisor.GetByRole(AriaRole.Row).Filter(new() { HasText = title });
         await Expect(row).ToBeVisibleAsync(new() { Timeout = 15_000 });
+        await fixture.ScreenshotAsync(supervisor, "flujo-2");
         await row.GetByRole(AriaRole.Link).First.ClickAsync();
         await supervisor.WaitForURLAsync(TicketUrl());
         await supervisor.GetByRole(AriaRole.Button, new() { Name = "Asignar", Exact = true }).ClickAsync();
         var dialog = supervisor.GetByRole(AriaRole.Dialog);
         await dialog.GetByRole(AriaRole.Combobox, new() { Name = "Asignar a" }).ClickAsync();
         await supervisor.GetByRole(AriaRole.Option).Filter(new() { HasText = "Carlos Vélez" }).ClickAsync();
+        await fixture.ScreenshotAsync(supervisor, "flujo-3");
         await dialog.GetByRole(AriaRole.Button, new() { Name = "Asignar", Exact = true }).ClickAsync();
         await Expect(supervisor.GetByText("Asignado", new() { Exact = true }).First).ToBeVisibleAsync();
         var ticketUrl = supervisor.Url;
@@ -54,10 +57,12 @@ public sealed partial class TicketLifecycleTests(BrowserFixture fixture)
 
         // El cliente recibe la respuesta pública en vivo, sin recargar.
         await Expect(customer.GetByText(reply)).ToBeVisibleAsync(new() { Timeout = 15_000 });
+        await fixture.ScreenshotAsync(customer, "flujo-4");
 
         await agent.GetByRole(AriaRole.Button, new() { Name = "Resolver" }).ClickAsync();
         var resolveDialog = agent.GetByRole(AriaRole.Dialog);
         await resolveDialog.GetByLabel("Solución aplicada").FillAsync(resolution);
+        await fixture.ScreenshotAsync(agent, "flujo-5");
         await resolveDialog.GetByRole(AriaRole.Button, new() { Name = "Confirmar" }).ClickAsync();
         await Expect(agent.GetByText("Resuelto", new() { Exact = true }).First).ToBeVisibleAsync();
         // El chip cambió de estado en vivo varias veces: su clase de color debe ser la del estado actual.
