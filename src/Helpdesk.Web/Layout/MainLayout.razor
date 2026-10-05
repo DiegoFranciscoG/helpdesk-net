@@ -1,0 +1,192 @@
+@inherits LayoutComponentBase
+@implements IAsyncDisposable
+@inject SessionService Session
+@inject RealtimeClient Realtime
+@inject HelpdeskApi Api
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+@inject NavigationManager Navigation
+
+<MudThemeProvider Theme="HelpdeskTheme.Theme" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<a class="skip-link" href="#contenido">Saltar al contenido</a>
+
+<MudLayout>
+    <MudAppBar Elevation="1">
+        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@(() => _drawerOpen = !_drawerOpen)" aria-label="Abrir o cerrar menú" />
+        <MudText Typo="Typo.h6" Class="ml-2">helpdesk-net</MudText>
+        <MudSpacer />
+        @if (Session.IsAuthenticated)
+        {
+            <MudTooltip Text="@ConnectionText">
+                <MudIcon Icon="@ConnectionIcon" Color="Color.Inherit" Size="Size.Small" Class="mr-3" aria-label="@ConnectionText" />
+            </MudTooltip>
+            <MudBadge Content="@_unread" Visible="@(_unread > 0)" Color="Color.Error" Overlap="true" Class="mr-2">
+                <MudIconButton Icon="@Icons.Material.Filled.Notifications" Color="Color.Inherit" OnClick="OpenNotificationsAsync" aria-label="@($"Notificaciones: {_unread} sin leer")" />
+            </MudBadge>
+            <MudMenu Icon="@Icons.Material.Filled.AccountCircle" Color="Color.Inherit" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" aria-label="Menú de usuario">
+                <MudText Typo="Typo.subtitle2" Class="px-4 pt-2">@Session.User!.FullName</MudText>
+                <MudText Typo="Typo.caption" Class="px-4 pb-2">@Labels.Role(Session.User!.Role)</MudText>
+                <MudDivider />
+                <MudMenuItem Icon="@Icons.Material.Filled.Logout" OnClick="LogoutAsync">Cerrar sesión</MudMenuItem>
+            </MudMenu>
+        }
+    </MudAppBar>
+
+    <MudDrawer @bind-Open="_drawerOpen" Elevation="1" ClipMode="DrawerClipMode.Always" Variant="@DrawerVariant.Responsive">
+        <NavMenu />
+    </MudDrawer>
+
+    <MudDrawer @bind-Open="_notificationsOpen" Anchor="Anchor.End" Variant="@DrawerVariant.Temporary" Width="380px" Elevation="2">
+        <NotificationPanel @ref="_panel" OnUnreadChanged="@(count => { _unread = count; StateHasChanged(); })" />
+    </MudDrawer>
+
+    <MudMainContent>
+        <main id="contenido">
+            <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-4">
+                @Body
+            </MudContainer>
+        </main>
+    </MudMainContent>
+</MudLayout>
+
+@code {
+    private bool _drawerOpen = true;
+    private bool _notificationsOpen;
+    private int _unread;
+    private bool _privacyAsked;
+    private NotificationPanel? _panel;
+
+    private string ConnectionText => Realtime.State switch
+    {
+        Microsoft.AspNetCore.SignalR.Client.HubConnectionState.Connected => "Tiempo real conectado",
+        Microsoft.AspNetCore.SignalR.Client.HubConnectionState.Reconnecting => "Reconectando el tiempo real…",
+        _ => "Tiempo real desconectado",
+    };
+
+    private string ConnectionIcon => Realtime.State == Microsoft.AspNetCore.SignalR.Client.HubConnectionState.Connected
+        ? Icons.Material.Filled.Wifi
+        : Icons.Material.Filled.WifiOff;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Session.Changed += OnSessionChanged;
+        Realtime.NotificationReceived += OnNotification;
+        Realtime.StateChanged += OnRealtimeState;
+        await StartRealtimeAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Session is { IsCustomer: true, User.PrivacyNoticeAccepted: false } && !_privacyAsked)
+        {
+            _privacyAsked = true;
+            await ShowPrivacyNoticeAsync();
+        }
+    }
+
+    private async Task StartRealtimeAsync()
+    {
+        if (!Session.IsAuthenticated)
+        {
+            return;
+        }
+
+        await Realtime.StartAsync();
+        try
+        {
+            _unread = (await Api.UnreadCountAsync()).Count;
+        }
+        catch (ApiException)
+        {
+            _unread = 0;
+        }
+    }
+
+    private async Task ShowPrivacyNoticeAsync()
+    {
+        var options = new DialogOptions { BackdropClick = false, CloseOnEscapeKey = false, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await Dialogs.ShowAsync<PrivacyNoticeDialog>("Aviso de privacidad", options);
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
+        {
+            await Api.AcceptPrivacyAsync();
+            await Session.ReloadAsync();
+            Snackbar.Add("Gracias. Ya puedes registrar tus solicitudes.", Severity.Success);
+        }
+        else
+        {
+            await LogoutAsync();
+        }
+    }
+
+    private async Task OpenNotificationsAsync()
+    {
+        _notificationsOpen = true;
+        if (_panel is not null)
+        {
+            await _panel.LoadAsync();
+        }
+    }
+
+    private void OnNotification(NotificationDto notification)
+    {
+        _unread++;
+        var severity = notification.Type switch
+        {
+            Helpdesk.Domain.Notifications.NotificationType.SlaBreached => Severity.Error,
+            Helpdesk.Domain.Notifications.NotificationType.SlaWarning => Severity.Warning,
+            _ => Severity.Info,
+        };
+        Snackbar.Add(notification.Title, severity, config =>
+        {
+            if (notification.TicketId is { } ticketId)
+            {
+                config.Action = "Ver";
+                config.OnClick = _ =>
+                {
+                    Navigation.NavigateTo($"tickets/{ticketId}");
+                    return Task.CompletedTask;
+                };
+            }
+        });
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void OnRealtimeState(Microsoft.AspNetCore.SignalR.Client.HubConnectionState state) => _ = InvokeAsync(StateHasChanged);
+
+    private void OnSessionChanged()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            if (Session.IsAuthenticated)
+            {
+                await StartRealtimeAsync();
+            }
+            else
+            {
+                await Realtime.StopAsync();
+            }
+
+            StateHasChanged();
+        });
+    }
+
+    private async Task LogoutAsync()
+    {
+        await Realtime.StopAsync();
+        await Session.LogoutAsync();
+        Navigation.NavigateTo("login", replace: true);
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        Session.Changed -= OnSessionChanged;
+        Realtime.NotificationReceived -= OnNotification;
+        Realtime.StateChanged -= OnRealtimeState;
+        return ValueTask.CompletedTask;
+    }
+}

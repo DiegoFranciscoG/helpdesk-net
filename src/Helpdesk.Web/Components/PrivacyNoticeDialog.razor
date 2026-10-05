@@ -1,0 +1,33 @@
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Aviso de privacidad (versión @PrivacyNotice.CurrentVersion)</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Class="mb-2">
+            Antes de registrar solicitudes, te contamos cómo tratamos tus datos, conforme a la Ley Orgánica de Protección de Datos Personales del Ecuador (LOPDP).
+        </MudText>
+        <MudList T="string" Dense="true">
+            <MudListItem T="string" Icon="@Icons.Material.Filled.Info"><b>Finalidad:</b> atender y dar seguimiento a tus tickets de soporte.</MudListItem>
+            <MudListItem T="string" Icon="@Icons.Material.Filled.FilterAlt"><b>Minimización:</b> solo pedimos nombre y contacto; nunca cédula ni RUC. No incluyas datos de tarjetas en tus mensajes.</MudListItem>
+            <MudListItem T="string" Icon="@Icons.Material.Filled.AutoAwesome"><b>IA con revisión humana:</b> un clasificador sugiere la categoría y la cola de tu ticket; siempre la confirma una persona (art. 20). El texto se anonimiza antes de guardarse en ese servicio.</MudListItem>
+            <MudListItem T="string" Icon="@Icons.Material.Filled.Lock"><b>Seguridad:</b> acceso solo del personal de soporte y adjuntos protegidos.</MudListItem>
+            <MudListItem T="string" Icon="@Icons.Material.Filled.Gavel"><b>Tus derechos:</b> acceso, rectificación y eliminación, atendidos en 15 días (arts. 13–15).</MudListItem>
+        </MudList>
+        <MudCheckBox T="bool" @bind-Value="_accepted" Color="Color.Primary" Label="Leí el aviso y acepto el tratamiento de mis datos para esta finalidad." />
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Text" OnClick="Decline">No acepto (cerrar sesión)</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!_accepted)" OnClick="Accept">Aceptar</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private bool _accepted;
+
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    private void Accept() => MudDialog.Close(DialogResult.Ok(true));
+
+    private void Decline() => MudDialog.Cancel();
+}

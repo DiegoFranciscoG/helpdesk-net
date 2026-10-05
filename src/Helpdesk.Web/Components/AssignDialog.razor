@@ -1,0 +1,46 @@
+@inject HelpdeskApi Api
+
+<MudDialog>
+    <DialogContent>
+        @if (_agents is null)
+        {
+            <MudProgressLinear Indeterminate="true" />
+        }
+        else if (_agents.Count == 0)
+        {
+            <MudAlert Severity="Severity.Warning">La cola no tiene personal activo.</MudAlert>
+        }
+        else
+        {
+            <MudSelect T="Guid?" @bind-Value="_selected" Label="Asignar a" Variant="Variant.Outlined">
+                @foreach (var agent in _agents)
+                {
+                    <MudSelectItem T="Guid?" Value="@agent.Id">@agent.FullName · @Labels.Role(agent.Role)</MudSelectItem>
+                }
+            </MudSelect>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => MudDialog.Cancel())">Cancelar</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(_selected is null)" OnClick="@(() => MudDialog.Close(DialogResult.Ok(_selected!.Value)))">Asignar</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<AgentDto>? _agents;
+    private Guid? _selected;
+
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter]
+    public Guid TeamId { get; set; }
+
+    [Parameter]
+    public Guid? CurrentAssigneeId { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _agents = (await Api.AgentsAsync(TeamId)).Where(a => a.Id != CurrentAssigneeId).ToList();
+    }
+}

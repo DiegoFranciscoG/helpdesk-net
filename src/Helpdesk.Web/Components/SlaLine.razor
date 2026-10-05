@@ -1,0 +1,43 @@
+@* Una meta de SLA: vencimiento, si se cumplió y cuánto falta. *@
+<div>
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudText Typo="Typo.subtitle2">@Label</MudText>
+        <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="@StateColor" Icon="@StateIcon">@StateText</MudChip>
+    </MudStack>
+    <MudText Typo="Typo.caption" Class="mud-text-secondary">
+        Vence: @Labels.Date(Due)
+        @if (Done is { } done)
+        {
+            <span> · cumplido el @Labels.Date(done)</span>
+        }
+        else if (!Paused)
+        {
+            <span> · @Labels.Relative(Due, DateTimeOffset.UtcNow)</span>
+        }
+    </MudText>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Label { get; set; } = string.Empty;
+
+    [Parameter]
+    public DateTimeOffset Due { get; set; }
+
+    [Parameter]
+    public DateTimeOffset? Done { get; set; }
+
+    [Parameter]
+    public bool Breached { get; set; }
+
+    [Parameter]
+    public bool Paused { get; set; }
+
+    private bool Late => Breached || (Done is null && !Paused && DateTimeOffset.UtcNow > Due);
+
+    private string StateText => Late ? "Incumplido" : Done is not null ? "Cumplido" : Paused ? "Pausado" : "En curso";
+
+    private Color StateColor => Late ? Color.Error : Done is not null ? Color.Success : Paused ? Color.Info : Color.Primary;
+
+    private string StateIcon => Late ? Icons.Material.Filled.Error : Done is not null ? Icons.Material.Filled.CheckCircle : Paused ? Icons.Material.Filled.PauseCircle : Icons.Material.Filled.Schedule;
+}

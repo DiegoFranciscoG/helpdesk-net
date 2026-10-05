@@ -1,0 +1,96 @@
+@* Clasificación manual o corrección de una sugerencia: categoría, cola (opcional) e impacto/urgencia. *@
+@inject HelpdeskApi Api
+
+<MudDialog>
+    <DialogContent>
+        <MudSelect T="Guid?" @bind-Value="CategoryId" Label="Categoría" Variant="Variant.Outlined" Clearable="true" Class="mb-3">
+            @foreach (var category in _categories.Where(c => c.IsActive))
+            {
+                <MudSelectItem T="Guid?" Value="@category.Id">@category.Name</MudSelectItem>
+            }
+        </MudSelect>
+
+        @if (ShowTeam)
+        {
+            <MudSelect T="Guid?" @bind-Value="TeamId" Label="Cola" Variant="Variant.Outlined" Clearable="true" Class="mb-3">
+                @foreach (var team in _teams.Where(t => t.IsActive))
+                {
+                    <MudSelectItem T="Guid?" Value="@team.Id">@team.Name</MudSelectItem>
+                }
+            </MudSelect>
+        }
+
+        <MudGrid Spacing="2">
+            @if (ShowImpact)
+            {
+                <MudItem xs="12" sm="6">
+                    <MudSelect T="Impact" @bind-Value="Impact" Label="Impacto" Variant="Variant.Outlined">
+                        @foreach (var impact in Enum.GetValues<Impact>())
+                        {
+                            <MudSelectItem T="Impact" Value="@impact">@Labels.Level(impact)</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+            }
+            <MudItem xs="12" sm="6">
+                <MudSelect T="Urgency" @bind-Value="Urgency" Label="Urgencia" Variant="Variant.Outlined">
+                    @foreach (var urgency in Enum.GetValues<Urgency>())
+                    {
+                        <MudSelectItem T="Urgency" Value="@urgency">@Labels.Level(urgency)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+        </MudGrid>
+
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mt-3">
+            <MudText Typo="Typo.body2">Prioridad resultante:</MudText>
+            <Chips Kind="Chips.ChipKind.Priority" Priority="@PriorityMatrix.Calculate(Impact, Urgency)" />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => MudDialog.Cancel())">Cancelar</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Confirm">@ConfirmText</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<CategoryDto> _categories = [];
+    private List<TeamDto> _teams = [];
+
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter]
+    public Guid? CategoryId { get; set; }
+
+    [Parameter]
+    public Guid? TeamId { get; set; }
+
+    [Parameter]
+    public Impact Impact { get; set; } = Impact.Medium;
+
+    [Parameter]
+    public Urgency Urgency { get; set; } = Urgency.Medium;
+
+    [Parameter]
+    public bool ShowTeam { get; set; }
+
+    [Parameter]
+    public bool ShowImpact { get; set; } = true;
+
+    [Parameter]
+    public string ConfirmText { get; set; } = "Guardar";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _categories = await Api.CategoriesAsync();
+        if (ShowTeam)
+        {
+            _teams = await Api.TeamsAsync();
+        }
+    }
+
+    private void Confirm() => MudDialog.Close(DialogResult.Ok(new ClassificationChoice(CategoryId, TeamId, Impact, Urgency)));
+
+    public sealed record ClassificationChoice(Guid? CategoryId, Guid? TeamId, Impact Impact, Urgency Urgency);
+}

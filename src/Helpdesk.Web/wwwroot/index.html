@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Mesa de ayuda con SLA sobre calendario laboral de Ecuador, notificaciones en tiempo real y sugerencias de IA." />
+    <meta name="referrer" content="no-referrer" />
+    <title>helpdesk-net</title>
+    <base href="/" />
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <link rel="stylesheet" href="_content/MudBlazor/MudBlazor.min.css" />
+    <link rel="stylesheet" href="css/app.css" />
+</head>
+
+<body>
+    <div id="app">
+        <div class="boot-screen" role="status" aria-live="polite">
+            <img src="favicon.svg" alt="" width="56" height="56" />
+            <p>Cargando helpdesk-net…</p>
+        </div>
+    </div>
+
+    <div id="blazor-error-ui" role="alert">
+        Ocurrió un error inesperado. <a href="." class="reload">Recargar</a>
+        <button type="button" class="dismiss" aria-label="Cerrar">✕</button>
+    </div>
+    <script src="_framework/blazor.webassembly.js"></script>
+    <script src="_content/MudBlazor/MudBlazor.min.js"></script>
+    <script src="js/helpdesk.js"></script>
+</body>
+
+</html>

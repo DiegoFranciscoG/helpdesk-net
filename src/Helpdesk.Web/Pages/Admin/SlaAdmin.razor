@@ -1,0 +1,202 @@
+@page "/admin/sla"
+@attribute [Authorize(Roles = "Admin,Supervisor,Agent")]
+@inject SessionService Session
+@inject HelpdeskApi Api
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+<PageTitle>SLA y feriados · helpdesk-net</PageTitle>
+
+<MudText Typo="Typo.h4" HtmlTag="h1" Class="mb-1">SLA y calendario laboral</MudText>
+<MudText Typo="Typo.body2" Class="mud-text-secondary mb-4">Objetivos por prioridad y nivel de servicio. El tiempo se mide en horario hábil de Ecuador, sin feriados; la prioridad P1 corre 24×7.</MudText>
+
+<MudGrid Spacing="3">
+    <MudItem xs="12" lg="8">
+        <MudPaper Class="pa-4" Elevation="1">
+            <MudText Typo="Typo.h6" HtmlTag="h2" Class="mb-2">Reglas de SLA</MudText>
+            <MudTable T="SlaPolicyDto" Items="@_policies" Dense="true" Hover="true" Elevation="0" Breakpoint="Breakpoint.Sm" CanCancelEdit="true"
+                      RowEditPreview="Backup" RowEditCancel="Restore" RowEditCommit="Save" ReadOnly="@(!Session.IsAdmin)" CommitEditTooltip="Guardar" CancelEditTooltip="Cancelar">
+                <HeaderContent>
+                    <MudTh>Regla</MudTh>
+                    <MudTh>Nivel</MudTh>
+                    <MudTh>Calendario</MudTh>
+                    <MudTh>Primera respuesta</MudTh>
+                    <MudTh>Resolución</MudTh>
+                    <MudTh>Aviso</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Regla"><Chips Kind="Chips.ChipKind.Priority" Priority="@context.Priority" /></MudTd>
+                    <MudTd DataLabel="Nivel">@(context.ServiceTier is { } tier ? Labels.Tier(tier) : "Todos")</MudTd>
+                    <MudTd DataLabel="Calendario">@context.CalendarName</MudTd>
+                    <MudTd DataLabel="Primera respuesta">@Labels.Target(context.FirstResponseMinutes, Is24x7(context))</MudTd>
+                    <MudTd DataLabel="Resolución">@Labels.Target(context.ResolutionMinutes, Is24x7(context))</MudTd>
+                    <MudTd DataLabel="Aviso">@context.WarningPercent %</MudTd>
+                </RowTemplate>
+                <RowEditingTemplate>
+                    <MudTd DataLabel="Regla"><Chips Kind="Chips.ChipKind.Priority" Priority="@context.Priority" /></MudTd>
+                    <MudTd DataLabel="Nivel">@(context.ServiceTier is { } tier ? Labels.Tier(tier) : "Todos")</MudTd>
+                    <MudTd DataLabel="Calendario">@context.CalendarName</MudTd>
+                    <MudTd DataLabel="Primera respuesta"><MudNumericField T="int" @bind-Value="_edit.FirstResponseMinutes" Label="minutos" Min="1" /></MudTd>
+                    <MudTd DataLabel="Resolución"><MudNumericField T="int" @bind-Value="_edit.ResolutionMinutes" Label="minutos" Min="1" /></MudTd>
+                    <MudTd DataLabel="Aviso"><MudNumericField T="int" @bind-Value="_edit.WarningPercent" Label="%" Min="50" Max="95" /></MudTd>
+                </RowEditingTemplate>
+            </MudTable>
+            @if (Session.IsAdmin)
+            {
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">Haz clic en una fila para editarla. Los cambios aplican a tickets nuevos o reclasificados.</MudText>
+            }
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" lg="4">
+        <MudPaper Class="pa-4" Elevation="1">
+            <MudText Typo="Typo.h6" HtmlTag="h2" Class="mb-2">Matriz ITIL de prioridad</MudText>
+            <MudSimpleTable Dense="true" Elevation="0">
+                <thead>
+                    <tr>
+                        <th scope="col">Impacto \ Urgencia</th>
+                        @foreach (var urgency in Enum.GetValues<Urgency>())
+                        {
+                            <th scope="col" class="matrix-cell">@Labels.Level(urgency)</th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var impact in Enum.GetValues<Impact>())
+                    {
+                        <tr>
+                            <th scope="row">@Labels.Level(impact)</th>
+                            @foreach (var urgency in Enum.GetValues<Urgency>())
+                            {
+                                <td class="matrix-cell"><Chips Kind="Chips.ChipKind.Priority" Priority="@PriorityMatrix.Calculate(impact, urgency)" /></td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+        </MudPaper>
+    </MudItem>
+
+    @if (_office is { } office)
+    {
+        <MudItem xs="12">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-2">
+                    <div>
+                        <MudText Typo="Typo.h6" HtmlTag="h2">@office.Name</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary">Zona @office.TimeZone · @string.Join(" · ", office.Hours.Select(h => $"{h.StartTime:HH\\:mm}–{h.EndTime:HH\\:mm}").Distinct()) de lunes a viernes</MudText>
+                    </div>
+                    @if (Session.IsAdmin)
+                    {
+                        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+                            <MudDatePicker @bind-Date="_holidayDate" Label="Fecha" Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width:170px" />
+                            <MudTextField T="string" @bind-Value="_holidayName" Label="Nombre" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                            <MudTextField T="string" @bind-Value="_holidayBasis" Label="Base legal" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(_holidayDate is null || string.IsNullOrWhiteSpace(_holidayName) || string.IsNullOrWhiteSpace(_holidayBasis))" OnClick="AddHolidayAsync">Agregar feriado</MudButton>
+                        </MudStack>
+                    }
+                </MudStack>
+                <MudTable T="HolidayDto" Items="@office.Holidays" Dense="true" Hover="true" Elevation="0" Breakpoint="Breakpoint.Sm">
+                    <HeaderContent>
+                        <MudTh>Fecha</MudTh>
+                        <MudTh>Feriado</MudTh>
+                        <MudTh>Base legal</MudTh>
+                        @if (Session.IsAdmin)
+                        {
+                            <MudTh></MudTh>
+                        }
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Fecha">@context.Date.ToString("dddd dd 'de' MMMM yyyy", System.Globalization.CultureInfo.GetCultureInfo("es-EC"))</MudTd>
+                        <MudTd DataLabel="Feriado">@context.Name</MudTd>
+                        <MudTd DataLabel="Base legal">@context.LegalBasis</MudTd>
+                        @if (Session.IsAdmin)
+                        {
+                            <MudTd><MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" aria-label="@($"Eliminar {context.Name}")" OnClick="@(() => RemoveHolidayAsync(context))" /></MudTd>
+                        }
+                    </RowTemplate>
+                </MudTable>
+            </MudPaper>
+        </MudItem>
+    }
+</MudGrid>
+
+@code {
+    private List<SlaPolicyDto> _policies = [];
+    private CalendarDto? _office;
+    private HashSet<Guid> _alwaysOnCalendars = [];
+    private UpdateSlaPolicyRequest _edit = new();
+    private DateTime? _holidayDate;
+    private string _holidayName = string.Empty;
+    private string _holidayBasis = string.Empty;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _policies = await Api.SlaPoliciesAsync();
+            var calendars = await Api.CalendarsAsync();
+            _office = calendars.FirstOrDefault(c => !c.Is24x7);
+            _alwaysOnCalendars = [.. calendars.Where(c => c.Is24x7).Select(c => c.Id)];
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Friendly, Severity.Error);
+        }
+    }
+
+    private bool Is24x7(SlaPolicyDto policy) => _alwaysOnCalendars.Contains(policy.CalendarId);
+
+    private void Backup(object item)
+    {
+        var policy = (SlaPolicyDto)item;
+        _edit = new UpdateSlaPolicyRequest { FirstResponseMinutes = policy.FirstResponseMinutes, ResolutionMinutes = policy.ResolutionMinutes, WarningPercent = policy.WarningPercent };
+    }
+
+    private void Restore(object item) => _edit = new UpdateSlaPolicyRequest();
+
+    private void Save(object item) => _ = InvokeAsync(() => SaveAsync((SlaPolicyDto)item));
+
+    private async Task SaveAsync(SlaPolicyDto policy)
+    {
+        try
+        {
+            await Api.UpdateSlaPolicyAsync(policy.Id, _edit);
+            Snackbar.Add($"Regla {policy.Name} actualizada.", Severity.Success);
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Friendly, Severity.Error);
+        }
+
+        await LoadAsync();
+        StateHasChanged();
+    }
+
+    private async Task AddHolidayAsync()
+    {
+        try
+        {
+            await Api.AddHolidayAsync(_office!.Id, new CreateHolidayRequest { Date = DateOnly.FromDateTime(_holidayDate!.Value), Name = _holidayName.Trim(), LegalBasis = _holidayBasis.Trim() });
+            Snackbar.Add("Feriado agregado: los tickets nuevos ya no cuentan ese día.", Severity.Success);
+            (_holidayDate, _holidayName, _holidayBasis) = (null, string.Empty, string.Empty);
+            await LoadAsync();
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Friendly, Severity.Error);
+        }
+    }
+
+    private async Task RemoveHolidayAsync(HolidayDto holiday)
+    {
+        var confirmed = await Dialogs.ShowMessageBoxAsync("Eliminar feriado", $"¿Eliminar «{holiday.Name}»?", yesText: "Eliminar", cancelText: "Cancelar");
+        if (confirmed == true)
+        {
+            await Api.RemoveHolidayAsync(_office!.Id, holiday.Id);
+            await LoadAsync();
+        }
+    }
+}

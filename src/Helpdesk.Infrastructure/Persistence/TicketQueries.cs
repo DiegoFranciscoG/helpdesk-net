@@ -88,6 +88,7 @@ internal sealed partial class TicketQueries(HelpdeskDbContext db) : ITicketQueri
             r.CustomerName,
             r.CreatedAt,
             r.FirstResponseDueAt,
+            r.FirstRespondedAt,
             r.ResolutionDueAt,
             SlaStateCalculator.Calculate(r.Status, r.FirstRespondedAt, r.FirstResponseWarningAt, r.FirstResponseDueAt, r.FirstResponseBreached, r.ResolutionWarningAt, r.ResolutionDueAt, r.ResolutionBreached, now),
             r.EscalationLevel)).ToList();

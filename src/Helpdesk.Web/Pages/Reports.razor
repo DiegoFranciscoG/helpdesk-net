@@ -1,0 +1,203 @@
+@page "/reportes"
+@attribute [Authorize(Roles = "Admin,Supervisor")]
+@inject HelpdeskApi Api
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+
+<PageTitle>Reportes · helpdesk-net</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-3" Wrap="Wrap.Wrap">
+    <MudText Typo="Typo.h4" HtmlTag="h1">Reportes</MudText>
+    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+        <MudDateRangePicker @bind-DateRange="_range" Label="Periodo" Variant="Variant.Outlined" Margin="Margin.Dense" MaxDate="DateTime.Today" Style="min-width:260px" />
+        <MudSelect T="Guid?" @bind-Value="_teamId" Label="Cola" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" Style="min-width:200px">
+            @foreach (var team in _teams)
+            {
+                <MudSelectItem T="Guid?" Value="@team.Id">@team.Name</MudSelectItem>
+            }
+        </MudSelect>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh" OnClick="LoadAsync" Disabled="_loading">Actualizar</MudButton>
+        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Download" OnClick="ExportAsync">CSV</MudButton>
+    </MudStack>
+</MudStack>
+
+@if (_loading && _overview is null)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else if (_overview is { } o)
+{
+    <MudGrid Spacing="3" Class="mb-3">
+        <MudItem xs="6" md="4" lg="2"><KpiCard Title="Creados" Value="@o.Created.ToString()" Icon="@Icons.Material.Filled.ConfirmationNumber" Caption="@($"{o.Resolved} resueltos")" /></MudItem>
+        <MudItem xs="6" md="4" lg="2"><KpiCard Title="Primera respuesta" Value="@Labels.Hours(o.AverageFirstResponseBusinessHours)" Icon="@Icons.Material.Filled.Reply" Caption="Promedio en horas hábiles" /></MudItem>
+        <MudItem xs="6" md="4" lg="2"><KpiCard Title="Resolución" Value="@Labels.Hours(o.AverageResolutionBusinessHours)" Icon="@Icons.Material.Filled.TaskAlt" Caption="Promedio hábil, sin pausas" /></MudItem>
+        <MudItem xs="6" md="4" lg="2"><KpiCard Title="SLA respuesta" Value="@Labels.Percent(o.FirstResponseCompliancePercent)" Icon="@Icons.Material.Filled.Timer" Color="Color.Info" Caption="Cumplimiento" /></MudItem>
+        <MudItem xs="6" md="4" lg="2"><KpiCard Title="SLA resolución" Value="@Labels.Percent(o.ResolutionCompliancePercent)" Icon="@Icons.Material.Filled.Verified" Color="Color.Success" Caption="Cumplimiento" /></MudItem>
+        <MudItem xs="6" md="4" lg="2"><KpiCard Title="Satisfacción (CSAT)" Value="@(o.CsatAverage is { } c ? $"{c:0.0} / 5" : "—")" Icon="@Icons.Material.Filled.SentimentSatisfied" Color="Color.Secondary" Caption="@($"{Labels.Percent(o.CsatPercent)} satisfechos · {o.SurveyCount} encuestas")" /></MudItem>
+    </MudGrid>
+
+    <MudGrid Spacing="3" Class="mb-3">
+        <MudItem xs="12" lg="8">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.h6" HtmlTag="h2">Tickets creados y resueltos por día</MudText>
+                <MudChart T="double" ChartType="ChartType.Bar" ChartSeries="@_dailySeries" ChartLabels="@_dailyLabels" Width="100%" Height="300px" />
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" lg="4">
+            <MudPaper Class="pa-4" Elevation="1" Style="height:100%">
+                <MudText Typo="Typo.h6" HtmlTag="h2" Class="mb-2">Ahora mismo</MudText>
+                <MudText Typo="Typo.h3" Class="kpi-value">@o.OpenNow</MudText>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary mb-3">tickets abiertos</MudText>
+                <MudText Typo="Typo.h3" Class="kpi-value" Color="@(o.BreachedOpenNow > 0 ? Color.Error : Color.Success)">@o.BreachedOpenNow</MudText>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary">abiertos con SLA incumplido</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudGrid Spacing="3" Class="mb-3">
+        <MudItem xs="12" lg="6">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.h6" HtmlTag="h2" Class="mb-2">Cumplimiento de SLA por prioridad</MudText>
+                <MudSimpleTable Dense="true" Hover="true" Elevation="0">
+                    <thead>
+                        <tr><th scope="col">Prioridad</th><th scope="col">Creados</th><th scope="col">Resueltos</th><th scope="col">Respuesta</th><th scope="col">Resolución</th><th scope="col">Tiempo medio</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in o.ByPriority)
+                        {
+                            <tr>
+                                <td><Chips Kind="Chips.ChipKind.Priority" Priority="@row.Priority" /></td>
+                                <td>@row.Created</td>
+                                <td>@row.Resolved</td>
+                                <td>@Labels.Percent(row.FirstResponseCompliancePercent)</td>
+                                <td>@Labels.Percent(row.ResolutionCompliancePercent)</td>
+                                <td>@Labels.Hours(row.AverageResolutionBusinessHours)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" lg="6">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.h6" HtmlTag="h2" Class="mb-2">Volumen por categoría</MudText>
+                @{
+                    var max = Math.Max(1, o.ByCategory.Select(c => c.Created).DefaultIfEmpty(0).Max());
+                }
+                <MudStack Spacing="2">
+                    @foreach (var row in o.ByCategory)
+                    {
+                        <div>
+                            <MudStack Row="true" Justify="Justify.SpaceBetween"><MudText Typo="Typo.body2">@row.Category</MudText><MudText Typo="Typo.body2">@row.Created</MudText></MudStack>
+                            <div class="bar-track" role="img" aria-label="@($"{row.Category}: {row.Created} tickets")"><div class="bar-fill" style="width:@(100 * row.Created / max)%"></div></div>
+                        </div>
+                    }
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudPaper Class="pa-4" Elevation="1">
+        <MudText Typo="Typo.h6" HtmlTag="h2" Class="mb-2">Carga por agente</MudText>
+        <MudTable T="AgentWorkloadRow" Items="@_agents" Dense="true" Hover="true" Elevation="0" Breakpoint="Breakpoint.Sm">
+            <HeaderContent>
+                <MudTh>Agente</MudTh>
+                <MudTh>Asignados</MudTh>
+                <MudTh>En proceso</MudTh>
+                <MudTh>En espera</MudTh>
+                <MudTh>Resueltos (periodo)</MudTh>
+                <MudTh>Resolución media</MudTh>
+                <MudTh>Cumplimiento</MudTh>
+                <MudTh>CSAT</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Agente">@context.AgentName</MudTd>
+                <MudTd DataLabel="Asignados">@context.Assigned</MudTd>
+                <MudTd DataLabel="En proceso">@context.InProgress</MudTd>
+                <MudTd DataLabel="En espera">@context.OnHold</MudTd>
+                <MudTd DataLabel="Resueltos">@context.ResolvedInPeriod</MudTd>
+                <MudTd DataLabel="Resolución media">@Labels.Hours(context.AverageResolutionBusinessHours)</MudTd>
+                <MudTd DataLabel="Cumplimiento">@Labels.Percent(context.ResolutionCompliancePercent)</MudTd>
+                <MudTd DataLabel="CSAT">@(context.CsatAverage is { } c ? $"{c:0.0}" : "—")</MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    private DateRange _range = new(DateTime.Today.AddDays(-29), DateTime.Today);
+    private Guid? _teamId;
+    private List<TeamDto> _teams = [];
+    private ReportOverviewDto? _overview;
+    private List<AgentWorkloadRow> _agents = [];
+    private List<ChartSeries<double>> _dailySeries = [];
+    private string[] _dailyLabels = [];
+    private bool _loading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _teams = await Api.TeamsAsync();
+        }
+        catch (ApiException)
+        {
+            _teams = [];
+        }
+
+        await LoadAsync();
+    }
+
+    private ReportQuery Query => new()
+    {
+        From = _range.Start is { } start ? DateOnly.FromDateTime(start) : null,
+        To = _range.End is { } end ? DateOnly.FromDateTime(end) : null,
+        TeamId = _teamId,
+    };
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            var query = Query;
+            var overview = Api.OverviewAsync(query);
+            var agents = Api.AgentWorkloadAsync(query);
+            await Task.WhenAll(overview, agents);
+            _overview = overview.Result;
+            _agents = agents.Result;
+            BuildChart(_overview);
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Friendly, Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void BuildChart(ReportOverviewDto overview)
+    {
+        _dailyLabels = [.. overview.Daily.Select((d, i) => overview.Daily.Count <= 15 || i % 3 == 0 ? d.Date.ToString("dd/MM", System.Globalization.CultureInfo.InvariantCulture) : string.Empty)];
+        _dailySeries =
+        [
+            new ChartSeries<double> { Name = "Creados", Data = overview.Daily.Select(d => (double)d.Created).ToArray() },
+            new ChartSeries<double> { Name = "Resueltos", Data = overview.Daily.Select(d => (double)d.Resolved).ToArray() },
+        ];
+    }
+
+    private async Task ExportAsync()
+    {
+        try
+        {
+            var (content, contentType, name) = await Api.DownloadAsync(HelpdeskApi.ReportCsvUrl(Query), "tickets.csv");
+            await JS.InvokeVoidAsync("helpdesk.downloadFile", name, contentType, Convert.ToBase64String(content));
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Friendly, Severity.Error);
+        }
+    }
+}

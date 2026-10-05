@@ -1,0 +1,102 @@
+@page "/login"
+@layout EmptyLayout
+@attribute [AllowAnonymous]
+@inject SessionService Session
+@inject NavigationManager Navigation
+
+<PageTitle>Iniciar sesión · helpdesk-net</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="d-flex align-center" Style="min-height:100vh">
+    <MudPaper Elevation="3" Class="pa-8 mx-auto" Style="width:100%;max-width:440px">
+        <MudStack AlignItems="AlignItems.Center" Spacing="1" Class="mb-6">
+            <img src="favicon.svg" alt="" width="56" height="56" />
+            <MudText Typo="Typo.h4" HtmlTag="h1">helpdesk-net</MudText>
+            <MudText Typo="Typo.body2" Class="mud-text-secondary" Align="Align.Center">Mesa de ayuda con SLA sobre el calendario laboral de Ecuador</MudText>
+        </MudStack>
+
+        <MudForm @ref="_form" Model="@_model" Validation="@_validation" ValidationDelay="0">
+            <MudTextField @bind-Value="_model.Email" For="@(() => _model.Email)" Label="Correo" Variant="Variant.Outlined" InputType="InputType.Email"
+                          autocomplete="username" Immediate="true" Class="mb-3" />
+            <MudTextField @bind-Value="_model.Password" For="@(() => _model.Password)" Label="Contraseña" Variant="Variant.Outlined"
+                          InputType="@(_showPassword ? InputType.Text : InputType.Password)" autocomplete="current-password"
+                          Adornment="Adornment.End" AdornmentIcon="@(_showPassword ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
+                          AdornmentAriaLabel="Mostrar u ocultar la contraseña" OnAdornmentClick="@(() => _showPassword = !_showPassword)"
+                          OnKeyUp="OnKeyUpAsync" Immediate="true" />
+        </MudForm>
+
+        @if (_error is not null)
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-4" Dense="true">@_error</MudAlert>
+        }
+
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" Size="Size.Large" Class="mt-6" Disabled="_busy" OnClick="LoginAsync">
+            @if (_busy)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            Ingresar
+        </MudButton>
+
+        <MudText Typo="Typo.caption" Class="mt-6 d-block mud-text-secondary" Align="Align.Center">
+            Datos de demostración ficticios. Tras 5 intentos fallidos la cuenta se bloquea 15 minutos.
+        </MudText>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private readonly LoginRequest _model = new();
+    private readonly Func<object, string, Task<IEnumerable<string>>> _validation = FormValidation.For(new Helpdesk.Contracts.Validation.LoginRequestValidator());
+    private MudForm? _form;
+    private bool _busy;
+    private bool _showPassword;
+    private string? _error;
+
+    [SupplyParameterFromQuery]
+    public string? ReturnUrl { get; set; }
+
+    protected override void OnInitialized()
+    {
+        if (Session.IsAuthenticated)
+        {
+            Navigation.NavigateTo(SafeReturnUrl, replace: true);
+        }
+    }
+
+    private string SafeReturnUrl => ReturnUrls.Sanitize(ReturnUrl);
+
+    private async Task OnKeyUpAsync(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter")
+        {
+            await LoginAsync();
+        }
+    }
+
+    private async Task LoginAsync()
+    {
+        _error = null;
+        await _form!.ValidateAsync();
+        if (!_form.IsValid)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            _error = await Session.LoginAsync(_model.Email.Trim(), _model.Password);
+            if (_error is null)
+            {
+                Navigation.NavigateTo(SafeReturnUrl, replace: true);
+            }
+        }
+        catch (HttpRequestException)
+        {
+            _error = "No se pudo conectar con la API. Revisa que esté en ejecución.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

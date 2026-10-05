@@ -173,6 +173,7 @@ public sealed record TicketListItemDto(
     string CustomerName,
     DateTimeOffset CreatedAt,
     DateTimeOffset FirstResponseDueAt,
+    DateTimeOffset? FirstRespondedAt,
     DateTimeOffset ResolutionDueAt,
     SlaState SlaState,
     int EscalationLevel);

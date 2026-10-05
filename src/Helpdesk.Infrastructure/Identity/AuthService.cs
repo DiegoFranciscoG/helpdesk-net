@@ -51,11 +51,14 @@ internal sealed partial class AuthService(
             throw new AuthenticationFailedException();
         }
 
-        await userManager.ResetAccessFailedCountAsync(user);
-        user.LastLoginAt = clock.GetUtcNow();
-        await userManager.UpdateAsync(user);
-        // Expiración absoluta truncada a segundos: PostgreSQL guarda microsegundos y el valor debe ser idéntico en cada rotación.
+        // Sentencia atómica en vez de UserManager.UpdateAsync: dos inicios de sesión simultáneos del mismo usuario
+        // (dos pestañas) no compiten por el ConcurrencyStamp de Identity.
         var now = clock.GetUtcNow();
+        await db.Users
+            .Where(u => u.Id == user.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(u => u.AccessFailedCount, 0).SetProperty(u => u.LastLoginAt, now), cancellationToken);
+
+        // Expiración absoluta truncada a segundos: PostgreSQL guarda microsegundos y el valor debe ser idéntico en cada rotación.
         var familyExpiresAt = new DateTimeOffset(now.Year, now.Month, now.Day, now.Hour, now.Minute, now.Second, TimeSpan.Zero).AddHours(options.Value.RefreshTokenHours);
         return await IssueAsync(user, Guid.CreateVersion7(), familyExpiresAt, cancellationToken);
     }
@@ -66,12 +69,17 @@ internal sealed partial class AuthService(
         var stored = await db.RefreshTokens.FirstOrDefaultAsync(t => t.TokenHash == TokenService.Hash(refreshToken), cancellationToken)
             ?? throw new AuthenticationFailedException("Sesión inválida.");
 
+        var withinGrace = false;
         if (stored.RevokedAt is not null)
         {
-            // Reutilización de un token ya rotado: posible robo. Se revoca toda la familia.
-            await RevokeFamilyAsync(stored.FamilyId, "reuse_detected", now, cancellationToken);
-            LogRefreshReuse(logger, stored.UserId);
-            throw new AuthenticationFailedException("Sesión inválida.");
+            withinGrace = await IsWithinReuseGraceAsync(stored, now, cancellationToken);
+            if (!withinGrace)
+            {
+                // Reutilización de un token ya rotado: posible robo. Se revoca toda la familia.
+                await RevokeFamilyAsync(stored.FamilyId, "reuse_detected", now, cancellationToken);
+                LogRefreshReuse(logger, stored.UserId);
+                throw new AuthenticationFailedException("Sesión inválida.");
+            }
         }
 
         if (stored.ExpiresAt <= now)
@@ -86,9 +94,18 @@ internal sealed partial class AuthService(
             throw new AuthenticationFailedException("Sesión inválida.");
         }
 
-        var response = await IssueAsync(user, stored.FamilyId, stored.ExpiresAt, cancellationToken, previous: stored);
-        return response;
+        return await IssueAsync(user, stored.FamilyId, stored.ExpiresAt, cancellationToken, previous: withinGrace ? null : stored);
     }
+
+    /// <summary>
+    /// Carrera legítima: la pestaña se recargó mientras la rotación estaba en vuelo y nunca recibió el sucesor.
+    /// Se tolera solo si el token se rotó (no se revocó por logout, robo o desactivación), hace pocos segundos
+    /// y la familia sigue viva; es el mismo criterio de "período de gracia" de los proveedores de identidad.
+    /// </summary>
+    private async Task<bool> IsWithinReuseGraceAsync(RefreshToken stored, DateTimeOffset now, CancellationToken cancellationToken) =>
+        stored.RevokedReason == RefreshToken.RotatedReason
+        && now - stored.RevokedAt <= TimeSpan.FromSeconds(options.Value.RefreshReuseGraceSeconds)
+        && await db.RefreshTokens.AnyAsync(t => t.FamilyId == stored.FamilyId && t.RevokedAt == null && t.ExpiresAt > now, cancellationToken);
 
     public async Task LogoutAsync(string refreshToken, CancellationToken cancellationToken)
     {
@@ -129,9 +146,12 @@ internal sealed partial class AuthService(
             throw new BusinessRuleException("privacy_version", "Versión del aviso de privacidad no vigente.");
         }
 
-        user.PrivacyNoticeVersion = version;
-        user.PrivacyNoticeAcceptedAt = clock.GetUtcNow();
-        await userManager.UpdateAsync(user);
+        // Idempotente y atómico: aceptar desde dos pestañas a la vez no produce un conflicto de concurrencia.
+        var now = clock.GetUtcNow();
+        await db.Users
+            .Where(u => u.Id == user.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(u => u.PrivacyNoticeVersion, version).SetProperty(u => u.PrivacyNoticeAcceptedAt, now), cancellationToken);
+        await db.Entry(user).ReloadAsync(cancellationToken);
         return await ToDtoAsync(user, cancellationToken);
     }
 
@@ -144,7 +164,7 @@ internal sealed partial class AuthService(
         var plainRefresh = TokenService.NewRefreshToken();
         var refresh = new RefreshToken(user.Id, TokenService.Hash(plainRefresh), familyId, clock.GetUtcNow(), familyExpiresAt);
         db.RefreshTokens.Add(refresh);
-        previous?.Revoke("rotated", clock.GetUtcNow(), refresh.Id);
+        previous?.Revoke(RefreshToken.RotatedReason, clock.GetUtcNow(), refresh.Id);
         await db.SaveChangesAsync(cancellationToken);
 
         return new TokenResponse(accessToken, accessExpires, plainRefresh, familyExpiresAt, await ToDtoAsync(user, cancellationToken, role));

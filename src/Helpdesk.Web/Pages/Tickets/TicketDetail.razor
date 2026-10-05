@@ -1,0 +1,526 @@
+@page "/tickets/{Id:guid}"
+@attribute [Authorize]
+@implements IDisposable
+@inject SessionService Session
+@inject HelpdeskApi Api
+@inject RealtimeClient Realtime
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+
+<PageTitle>@(_ticket?.Number ?? "Ticket") · helpdesk-net</PageTitle>
+
+@if (_notFound)
+{
+    <MudAlert Severity="Severity.Warning">El ticket no existe o no tienes acceso.</MudAlert>
+}
+else if (_ticket is null)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else
+{
+    var t = _ticket;
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-1" Wrap="Wrap.Wrap">
+        <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Href="tickets" aria-label="Volver al listado" Size="Size.Small" />
+        <MudText Typo="Typo.subtitle1" Class="mud-text-secondary">@t.Number</MudText>
+        <Chips Kind="Chips.ChipKind.Status" Status="@t.Status" />
+        <Chips Kind="Chips.ChipKind.Priority" Priority="@t.Priority" />
+        <Chips Kind="Chips.ChipKind.Sla" Sla="@t.Sla.State" />
+        @if (_liveFlash)
+        {
+            <MudChip T="string" Size="Size.Small" Color="Color.Info" Icon="@Icons.Material.Filled.Bolt">Actualizado en vivo</MudChip>
+        }
+    </MudStack>
+    <MudText Typo="Typo.h4" HtmlTag="h1" Class="ticket-title mb-3">@t.Title</MudText>
+
+    @if (ActionButtons.Count > 0)
+    {
+        <MudPaper Class="pa-2 mb-3" Elevation="1">
+            <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap" aria-label="Acciones del ticket">
+                @foreach (var button in ActionButtons)
+                {
+                    <MudButton Variant="@(button.Primary ? Variant.Filled : Variant.Outlined)" Color="@button.Color" StartIcon="@button.Icon" Disabled="_busy" OnClick="button.Run">@button.Text</MudButton>
+                }
+            </MudStack>
+        </MudPaper>
+    }
+
+    <MudGrid Spacing="3">
+        <MudItem xs="12" lg="8">
+            <MudPaper Class="pa-4 mb-3" Elevation="1">
+                <MudText Typo="Typo.subtitle2" Class="mud-text-secondary mb-1">Descripción</MudText>
+                <MudText Typo="Typo.body1" Class="pre-wrap">@t.Description</MudText>
+                @if (t.ResolutionSummary is not null)
+                {
+                    <MudAlert Severity="Severity.Success" Class="mt-3" Dense="true"><b>Solución:</b> @t.ResolutionSummary</MudAlert>
+                }
+            </MudPaper>
+
+            @if (Can(TicketAction.Survey))
+            {
+                <MudPaper Class="pa-4 mb-3" Elevation="1">
+                    <MudText Typo="Typo.h6" HtmlTag="h2">¿Cómo te atendimos?</MudText>
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary mb-2">@(t.Status == TicketStatus.Resolved ? "Calificar confirma la solución y cierra el ticket. Si el problema sigue, usa «Reabrir»." : "Tu opinión nos ayuda a mejorar.")</MudText>
+                    <MudRating @bind-SelectedValue="_rating" MaxValue="5" Size="Size.Large" aria-label="Calificación de 1 a 5" />
+                    <MudTextField T="string" @bind-Value="_surveyComment" Label="Comentario (opcional)" Variant="Variant.Outlined" Lines="2" MaxLength="1000" Class="mt-2" />
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-2" Disabled="@(_busy || _rating == 0)" OnClick="SubmitSurveyAsync">Enviar calificación</MudButton>
+                </MudPaper>
+            }
+            else if (t.Survey is { } survey)
+            {
+                <MudPaper Class="pa-4 mb-3" Elevation="1">
+                    <MudText Typo="Typo.subtitle2" Class="mud-text-secondary">Calificación del cliente</MudText>
+                    <MudRating SelectedValue="@survey.Rating" ReadOnly="true" aria-label="@($"Calificación {survey.Rating} de 5")" />
+                    @if (survey.Comment is not null)
+                    {
+                        <MudText Typo="Typo.body2">“@survey.Comment”</MudText>
+                    }
+                </MudPaper>
+            }
+
+            <MudPaper Elevation="1">
+                <MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="true" TabPanelsClass="pa-4">
+                    <MudTabPanel Text="@($"Conversación ({t.Comments.Count})")" Icon="@Icons.Material.Filled.Forum">
+                        <MudStack Spacing="2">
+                            @foreach (var c in t.Comments)
+                            {
+                                <MudPaper Outlined="true" Class="@($"pa-3 {(c.IsInternal ? "comment-internal" : c.AuthorIsStaff ? "comment-staff" : "comment-customer")}")">
+                                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+                                        <MudText Typo="Typo.subtitle2">@c.AuthorName @(c.AuthorIsStaff ? "· soporte" : string.Empty)</MudText>
+                                        <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                                            @if (c.IsInternal)
+                                            {
+                                                <MudChip T="string" Size="Size.Small" Color="Color.Warning" Icon="@Icons.Material.Filled.Lock">Nota interna</MudChip>
+                                            }
+                                            <MudText Typo="Typo.caption" Class="mud-text-secondary">@Labels.ShortDate(c.CreatedAt)</MudText>
+                                        </MudStack>
+                                    </MudStack>
+                                    <MudText Typo="Typo.body2" Class="pre-wrap mt-1">@c.Body</MudText>
+                                </MudPaper>
+                            }
+
+                            @if (Can(TicketAction.Comment))
+                            {
+                                <MudTextField T="string" @bind-Value="_comment" Label="@(_internal ? "Nota interna (no la ve el cliente)" : "Escribe una respuesta")" Variant="Variant.Outlined" Lines="3" MaxLength="5000" Immediate="true" />
+                                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                    @if (Can(TicketAction.InternalComment))
+                                    {
+                                        <MudSwitch T="bool" @bind-Value="_internal" Color="Color.Warning" Label="Nota interna" />
+                                    }
+                                    else
+                                    {
+                                        <span></span>
+                                    }
+                                    <MudButton Variant="Variant.Filled" Color="Color.Primary" EndIcon="@Icons.Material.Filled.Send" Disabled="@(_busy || string.IsNullOrWhiteSpace(_comment))" OnClick="CommentAsync">Enviar</MudButton>
+                                </MudStack>
+                            }
+                        </MudStack>
+                    </MudTabPanel>
+
+                    <MudTabPanel Text="@($"Adjuntos ({t.Attachments.Count})")" Icon="@Icons.Material.Filled.AttachFile">
+                        @if (t.Attachments.Count == 0)
+                        {
+                            <MudText Typo="Typo.body2" Class="mud-text-secondary mb-2">Sin adjuntos.</MudText>
+                        }
+                        <MudList T="AttachmentDto" Dense="true">
+                            @foreach (var a in t.Attachments)
+                            {
+                                <MudListItem T="AttachmentDto" Icon="@Icons.Material.Filled.InsertDriveFile" OnClick="@(() => DownloadAsync(a))">
+                                    <MudText Typo="Typo.body2">@a.FileName @(a.IsInternal ? "· interno" : string.Empty)</MudText>
+                                    <MudText Typo="Typo.caption" Class="mud-text-secondary">@Labels.FileSize(a.SizeBytes) · @a.UploadedByName · @Labels.ShortDate(a.CreatedAt)</MudText>
+                                </MudListItem>
+                            }
+                        </MudList>
+                        @if (Can(TicketAction.Upload))
+                        {
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3" Class="mt-2" Wrap="Wrap.Wrap">
+                                <MudFileUpload T="IBrowserFile" FilesChanged="UploadAsync" Accept=".pdf,.png,.jpg,.jpeg,.txt" MaximumFileCount="1">
+                                    <CustomContent>
+                                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.UploadFile" Disabled="_busy" OnClick="@context.OpenFilePickerAsync">Adjuntar archivo</MudButton>
+                                    </CustomContent>
+                                </MudFileUpload>
+                                @if (Can(TicketAction.InternalComment))
+                                {
+                                    <MudSwitch T="bool" @bind-Value="_internalFile" Color="Color.Warning" Label="Adjunto interno" />
+                                }
+                                <MudText Typo="Typo.caption" Class="mud-text-secondary">PDF, PNG, JPEG o TXT · máx. 5 MB · se verifica el contenido real del archivo.</MudText>
+                            </MudStack>
+                        }
+                    </MudTabPanel>
+
+                    <MudTabPanel Text="Historial" Icon="@Icons.Material.Filled.History">
+                        <MudTimeline TimelinePosition="TimelinePosition.Start">
+                            @foreach (var h in t.History.Reverse())
+                            {
+                                <MudTimelineItem Color="@Labels.StatusColor(h.ToStatus)" Size="Size.Small">
+                                    <MudText Typo="Typo.body2">
+                                        @(h.FromStatus is null ? "Creado" : h.FromStatus == h.ToStatus ? "Transferido" : $"{Labels.Status(h.FromStatus.Value)} → {Labels.Status(h.ToStatus)}")
+                                    </MudText>
+                                    <MudText Typo="Typo.caption" Class="mud-text-secondary">@h.ChangedByName · @Labels.Date(h.ChangedAt)</MudText>
+                                    @if (h.Reason is not null)
+                                    {
+                                        <MudText Typo="Typo.caption" Class="d-block">@h.Reason</MudText>
+                                    }
+                                </MudTimelineItem>
+                            }
+                        </MudTimeline>
+                    </MudTabPanel>
+
+                    @if (Session.IsStaff)
+                    {
+                        <MudTabPanel Text="Sugerencia IA" Icon="@Icons.Material.Filled.AutoAwesome" BadgeData="@(_suggestions.Any(s => s.Status == SuggestionStatus.Pending) ? "!" : null)" BadgeColor="Color.Secondary">
+                            <SuggestionPanel Ticket="@t" Suggestions="@_suggestions" CanReview="@Can(TicketAction.ReviewSuggestion)" OnChanged="LoadAsync" />
+                        </MudTabPanel>
+                    }
+                </MudTabs>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" lg="4">
+            <MudPaper Class="pa-4 mb-3" Elevation="1">
+                <MudText Typo="Typo.h6" HtmlTag="h2" Class="mb-2">SLA · @t.Sla.PolicyName</MudText>
+                <MudStack Spacing="2">
+                    <SlaLine Label="Primera respuesta" Due="@t.Sla.FirstResponseDueAt" Done="@t.Sla.FirstRespondedAt" Breached="@t.Sla.FirstResponseBreached" />
+                    <SlaLine Label="Resolución" Due="@t.Sla.ResolutionDueAt" Done="@t.Sla.ResolvedAt" Breached="@t.Sla.ResolutionBreached" Paused="@t.Sla.IsPaused" />
+                    @if (t.Sla.PausedBusinessMinutes > 0)
+                    {
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary">Tiempo en pausa: @Labels.Duration(TimeSpan.FromMinutes(t.Sla.PausedBusinessMinutes)) hábiles</MudText>
+                    }
+                    @if (t.Sla.EscalationLevel > 0)
+                    {
+                        <MudAlert Severity="@(t.Sla.EscalationLevel == 2 ? Severity.Error : Severity.Warning)" Dense="true">
+                            @(t.Sla.EscalationLevel == 2 ? "Escalado a líderes de cola y supervisión." : "Aviso de SLA enviado al responsable.")
+                        </MudAlert>
+                    }
+                    @if (t.AutoCloseAt is { } autoClose && t.Status == TicketStatus.Resolved)
+                    {
+                        <MudText Typo="Typo.caption">Se cerrará automáticamente el @Labels.Date(autoClose) si no se reabre.</MudText>
+                    }
+                </MudStack>
+            </MudPaper>
+
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.h6" HtmlTag="h2" Class="mb-2">Detalles</MudText>
+                <MudSimpleTable Dense="true" Elevation="0">
+                    <tbody>
+                        <tr><th scope="row">Cliente</th><td>@t.CustomerName <span class="mud-text-secondary">(@t.CustomerCode)</span></td></tr>
+                        <tr><th scope="row">Cola</th><td>@t.TeamName</td></tr>
+                        <tr><th scope="row">Asignado</th><td>@(t.AssigneeName ?? "Sin asignar")</td></tr>
+                        <tr><th scope="row">Categoría</th><td>@(t.CategoryName ?? "Sin clasificar")</td></tr>
+                        <tr><th scope="row">Impacto / urgencia</th><td>@Labels.Level(t.Impact) / @Labels.Level(t.Urgency)</td></tr>
+                        <tr><th scope="row">Canal</th><td>@Labels.Channel(t.Channel)</td></tr>
+                        <tr><th scope="row">Creado por</th><td>@t.CreatedByName</td></tr>
+                        <tr><th scope="row">Creado</th><td>@Labels.Date(t.CreatedAt)</td></tr>
+                        @if (t.ReopenCount > 0)
+                        {
+                            <tr><th scope="row">Reaperturas</th><td>@t.ReopenCount</td></tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private TicketDetailDto? _ticket;
+    private List<SuggestionDto> _suggestions = [];
+    private bool _notFound;
+    private bool _busy;
+    private bool _liveFlash;
+    private string _comment = string.Empty;
+    private bool _internal;
+    private bool _internalFile;
+    private int _rating;
+    private string? _surveyComment;
+
+    [Parameter]
+    public Guid Id { get; set; }
+
+    private bool Can(TicketAction action) => _ticket?.AllowedActions.Contains(action) == true;
+
+    private sealed record ActionButton(string Text, string Icon, Color Color, bool Primary, Func<Task> Run);
+
+    private List<ActionButton> ActionButtons
+    {
+        get
+        {
+            var buttons = new List<ActionButton>();
+            if (_ticket is null)
+            {
+                return buttons;
+            }
+
+            var me = Session.User?.Id;
+            if (Can(TicketAction.Assign) && Session.User?.Role == "Agent" && _ticket.AssigneeId != me)
+            {
+                buttons.Add(new("Asignarme", Icons.Material.Filled.PanTool, Color.Primary, true, () => RunAsync(() => Api.AssignAsync(Id, me!.Value, _ticket.Version))));
+            }
+
+            if (Can(TicketAction.Assign))
+            {
+                buttons.Add(new(_ticket.AssigneeId is null ? "Asignar" : "Reasignar", Icons.Material.Filled.AssignmentInd, Color.Primary, false, AssignAsync));
+            }
+
+            if (Can(TicketAction.Start))
+            {
+                buttons.Add(new("Iniciar", Icons.Material.Filled.PlayArrow, Color.Primary, true, () => TransitionAsync(TransitionAction.Start)));
+            }
+
+            if (Can(TicketAction.Resume))
+            {
+                buttons.Add(new("Reanudar", Icons.Material.Filled.PlayArrow, Color.Primary, true, () => TransitionAsync(TransitionAction.Resume)));
+            }
+
+            if (Can(TicketAction.Hold))
+            {
+                buttons.Add(new("En espera", Icons.Material.Filled.Pause, Color.Warning, false, () => PromptTransitionAsync(TransitionAction.Hold, "Poner en espera", "¿Qué se espera? (información del cliente, un proveedor…). El reloj de resolución se pausa.", "Motivo")));
+            }
+
+            if (Can(TicketAction.Resolve))
+            {
+                buttons.Add(new("Resolver", Icons.Material.Filled.TaskAlt, Color.Success, true, () => PromptTransitionAsync(TransitionAction.Resolve, "Resolver ticket", "El cliente verá este resumen y podrá confirmar o reabrir.", "Solución aplicada", lines: 4, maxLength: 2000)));
+            }
+
+            if (Can(TicketAction.Reopen))
+            {
+                buttons.Add(new("Reabrir", Icons.Material.Filled.Replay, Color.Warning, false, () => PromptTransitionAsync(TransitionAction.Reopen, "Reabrir ticket", "Cuéntanos qué sigue fallando.", "Motivo")));
+            }
+
+            if (Can(TicketAction.Close))
+            {
+                buttons.Add(new("Cerrar", Icons.Material.Filled.Lock, Color.Default, false, () => ConfirmTransitionAsync(TransitionAction.Close, "Cerrar ticket", "¿Confirmas que el problema quedó resuelto?")));
+            }
+
+            if (Can(TicketAction.Transfer))
+            {
+                buttons.Add(new("Transferir", Icons.Material.Filled.MoveUp, Color.Default, false, TransferAsync));
+            }
+
+            if (Can(TicketAction.Classify))
+            {
+                buttons.Add(new("Clasificar", Icons.Material.Filled.Category, Color.Default, false, ClassifyAsync));
+            }
+
+            if (Can(TicketAction.Cancel))
+            {
+                buttons.Add(new("Cancelar ticket", Icons.Material.Filled.Cancel, Color.Error, false, () => PromptTransitionAsync(TransitionAction.Cancel, "Cancelar ticket", "El ticket quedará cerrado sin solución.", "Motivo", confirmColor: Color.Error)));
+            }
+
+            return buttons;
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        Realtime.TicketChanged -= OnTicketChanged;
+        Realtime.TicketChanged += OnTicketChanged;
+        _ticket = null;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _ticket = await Api.GetTicketAsync(Id);
+            if (Session.IsStaff)
+            {
+                _suggestions = await Api.SuggestionsAsync(Id);
+            }
+        }
+        catch (ApiException ex) when (ex.Status == System.Net.HttpStatusCode.NotFound)
+        {
+            _notFound = true;
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Friendly, Severity.Error);
+        }
+    }
+
+    private void OnTicketChanged(TicketChangedMessage message)
+    {
+        if (message.TicketId != Id || _busy)
+        {
+            return;
+        }
+
+        _ = InvokeAsync(async () =>
+        {
+            await LoadAsync();
+            _liveFlash = true;
+            StateHasChanged();
+            await Task.Delay(4000);
+            _liveFlash = false;
+            StateHasChanged();
+        });
+    }
+
+    private async Task RunAsync(Func<Task<TicketDetailDto>> action, string? success = null)
+    {
+        _busy = true;
+        try
+        {
+            _ticket = await action();
+            if (success is not null)
+            {
+                Snackbar.Add(success, Severity.Success);
+            }
+
+            if (Session.IsStaff)
+            {
+                _suggestions = await Api.SuggestionsAsync(Id);
+            }
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Friendly, ex.IsStale ? Severity.Warning : Severity.Error);
+            if (ex.IsStale || ex.Status == System.Net.HttpStatusCode.Conflict)
+            {
+                await LoadAsync();
+            }
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private Task TransitionAsync(TransitionAction action) => RunAsync(() => Api.TransitionAsync(Id, new TransitionRequest { Action = action }, _ticket!.Version));
+
+    private async Task PromptTransitionAsync(TransitionAction action, string title, string message, string label, int lines = 3, int maxLength = 500, Color confirmColor = Color.Primary)
+    {
+        var parameters = new DialogParameters<TextPromptDialog>
+        {
+            { d => d.Message, message },
+            { d => d.Label, label },
+            { d => d.Lines, lines },
+            { d => d.MaxLength, maxLength },
+            { d => d.ConfirmColor, confirmColor },
+        };
+        var dialog = await Dialogs.ShowAsync<TextPromptDialog>(title, parameters, new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+        if (result is { Canceled: false, Data: string text })
+        {
+            var request = action == TransitionAction.Resolve
+                ? new TransitionRequest { Action = action, ResolutionSummary = text }
+                : new TransitionRequest { Action = action, Reason = text };
+            await RunAsync(() => Api.TransitionAsync(Id, request, _ticket!.Version));
+        }
+    }
+
+    private async Task ConfirmTransitionAsync(TransitionAction action, string title, string message)
+    {
+        var parameters = new DialogParameters<TextPromptDialog> { { d => d.Message, message }, { d => d.AskText, false } };
+        var dialog = await Dialogs.ShowAsync<TextPromptDialog>(title, parameters);
+        if (await dialog.Result is { Canceled: false })
+        {
+            await TransitionAsync(action);
+        }
+    }
+
+    private async Task AssignAsync()
+    {
+        var parameters = new DialogParameters<AssignDialog> { { d => d.TeamId, _ticket!.TeamId }, { d => d.CurrentAssigneeId, _ticket.AssigneeId } };
+        var dialog = await Dialogs.ShowAsync<AssignDialog>("Asignar ticket", parameters, new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true });
+        if (await dialog.Result is { Canceled: false, Data: Guid assignee })
+        {
+            await RunAsync(() => Api.AssignAsync(Id, assignee, _ticket.Version), "Ticket asignado.");
+        }
+    }
+
+    private async Task TransferAsync()
+    {
+        var parameters = new DialogParameters<TransferDialog> { { d => d.CurrentTeamId, _ticket!.TeamId } };
+        var dialog = await Dialogs.ShowAsync<TransferDialog>("Transferir a otra cola", parameters, new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        if (await dialog.Result is { Canceled: false, Data: TransferRequest request })
+        {
+            await RunAsync(() => Api.TransferAsync(Id, request, _ticket.Version), "Ticket transferido.");
+        }
+    }
+
+    private async Task ClassifyAsync()
+    {
+        var parameters = new DialogParameters<ClassifyDialog>
+        {
+            { d => d.CategoryId, _ticket!.CategoryId },
+            { d => d.Impact, _ticket.Impact },
+            { d => d.Urgency, _ticket.Urgency },
+        };
+        var dialog = await Dialogs.ShowAsync<ClassifyDialog>("Clasificar ticket", parameters, new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        if (await dialog.Result is { Canceled: false, Data: ClassifyDialog.ClassificationChoice choice })
+        {
+            await RunAsync(() => Api.ClassifyAsync(Id, new ClassifyRequest { CategoryId = choice.CategoryId, Impact = choice.Impact, Urgency = choice.Urgency }, _ticket.Version), "Clasificación actualizada: prioridad y SLA recalculados.");
+        }
+    }
+
+    private async Task CommentAsync()
+    {
+        _busy = true;
+        try
+        {
+            await Api.AddCommentAsync(Id, new CreateCommentRequest { Body = _comment.Trim(), IsInternal = _internal });
+            _comment = string.Empty;
+            _internal = false;
+            await LoadAsync();
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Friendly, Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task UploadAsync(IBrowserFile? file)
+    {
+        if (file is null)
+        {
+            return;
+        }
+
+        if (!Helpdesk.Contracts.Validation.AttachmentClientRules.IsAllowedExtension(file.Name) || file.Size > Helpdesk.Contracts.Validation.AttachmentClientRules.MaxBytes)
+        {
+            Snackbar.Add("Solo PDF, PNG, JPEG o TXT de hasta 5 MB.", Severity.Warning);
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            await Api.UploadAsync(Id, file, _internalFile);
+            Snackbar.Add("Archivo adjuntado.", Severity.Success);
+            await LoadAsync();
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Friendly, Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task DownloadAsync(AttachmentDto attachment)
+    {
+        try
+        {
+            var (content, contentType, name) = await Api.DownloadAsync($"api/v1/attachments/{attachment.Id}/content", attachment.FileName);
+            await JS.InvokeVoidAsync("helpdesk.downloadFile", name, contentType, Convert.ToBase64String(content));
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Friendly, Severity.Error);
+        }
+    }
+
+    private async Task SubmitSurveyAsync() =>
+        await RunAsync(() => Api.SubmitSurveyAsync(Id, new SurveyRequest { Rating = _rating, Comment = _surveyComment }), "¡Gracias por tu calificación!");
+
+    public void Dispose() => Realtime.TicketChanged -= OnTicketChanged;
+}

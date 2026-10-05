@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
 using Helpdesk.Contracts.Auth;
 using Helpdesk.Contracts.Catalog;
 using Helpdesk.IntegrationTests.Infrastructure;
@@ -55,6 +56,55 @@ public sealed class AuthAndSecurityTests(HelpdeskFixture fixture)
         rotated.RefreshTokenExpiresAt.Should().Be(login.RefreshTokenExpiresAt, "la expiración es absoluta para toda la familia");
         reuse.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         afterReuse.StatusCode.Should().Be(HttpStatusCode.Unauthorized, "la reutilización revoca toda la familia");
+    }
+
+    [Fact]
+    public async Task Recently_rotated_refresh_token_is_tolerated_only_while_the_family_is_alive()
+    {
+        const string email = "admin.ventana@helpdesk.example";
+        var password = "Ventana-" + Convert.ToHexString(RandomNumberGenerator.GetBytes(12));
+        await using var factory = fixture.CreateFactory("helpdesk_grace", new Dictionary<string, string?>
+        {
+            ["Jwt:RefreshReuseGraceSeconds"] = "30",
+            ["Database:SeedDemoData"] = "false",
+            ["Bootstrap:AdminEmail"] = email,
+            ["Bootstrap:AdminPassword"] = password,
+        });
+        var client = factory.CreateClient();
+        var login = await HelpdeskFixture.LoginAsync(client, email, password);
+
+        // La pestaña se recargó con la rotación en vuelo: el sucesor nunca llegó al navegador y reintenta con el anterior.
+        var lost = await client.PostAsJsonAsync("/api/v1/auth/refresh", new RefreshRequest { RefreshToken = login.RefreshToken });
+        var retry = await client.PostAsJsonAsync("/api/v1/auth/refresh", new RefreshRequest { RefreshToken = login.RefreshToken });
+        var recovered = await retry.ReadAsync<TokenResponse>();
+
+        // Tras cerrar sesión la familia muere: ni dentro de la ventana se acepta el token viejo.
+        await client.PostAsJsonAsync("/api/v1/auth/logout", new RefreshRequest { RefreshToken = recovered.RefreshToken });
+        var afterLogout = await client.PostAsJsonAsync("/api/v1/auth/refresh", new RefreshRequest { RefreshToken = login.RefreshToken });
+
+        lost.StatusCode.Should().Be(HttpStatusCode.OK);
+        recovered.RefreshTokenExpiresAt.Should().Be(login.RefreshTokenExpiresAt, "la ventana de gracia no extiende la vida de la familia");
+        afterLogout.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task Concurrent_logins_and_consents_of_the_same_user_never_fail()
+    {
+        // Dos pestañas a la vez no deben competir por el ConcurrencyStamp de Identity (antes: 500 intermitente).
+        var (email, password) = await CreateAgentAsync();
+        var logins = await Task.WhenAll(Enumerable.Range(0, 6).Select(_ =>
+            fixture.Factory.CreateClient().PostAsJsonAsync("/api/v1/auth/login", new LoginRequest { Email = email, Password = password })));
+
+        var customer = await fixture.ClientAsAsync("luis.cardenas@correo.example");
+        var consents = await Task.WhenAll(Enumerable.Range(0, 4).Select(_ =>
+            customer.PostAsJsonAsync("/api/v1/auth/privacy-consent", new PrivacyConsentRequest { Version = Contracts.Common.PrivacyNotice.CurrentVersion })));
+
+        logins.Should().AllSatisfy(r => r.StatusCode.Should().Be(HttpStatusCode.OK));
+        consents.Should().AllSatisfy(r => r.StatusCode.Should().Be(HttpStatusCode.OK));
+        foreach (var response in logins.Concat(consents))
+        {
+            response.Dispose();
+        }
     }
 
     [Fact]

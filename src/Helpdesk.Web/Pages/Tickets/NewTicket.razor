@@ -1,0 +1,156 @@
+@page "/tickets/nuevo"
+@attribute [Authorize]
+@inject SessionService Session
+@inject HelpdeskApi Api
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<PageTitle>Nuevo ticket · helpdesk-net</PageTitle>
+
+<MudText Typo="Typo.h4" HtmlTag="h1" Class="mb-3">Nuevo ticket</MudText>
+
+<MudGrid Spacing="3">
+    <MudItem xs="12" md="8">
+        <MudPaper Class="pa-4" Elevation="1">
+            <MudForm @ref="_form" Model="@_model" Validation="@_validation">
+                @if (Session.IsStaff)
+                {
+                    <MudAutocomplete T="CustomerDto" Label="Cliente" @bind-Value="_customer" SearchFunc="SearchCustomersAsync" ToStringFunc="@(c => c is null ? string.Empty : $"{c.DisplayName} ({c.Code})")"
+                                     Variant="Variant.Outlined" Required="true" RequiredError="Elige el cliente." DebounceInterval="300" Class="mb-3" />
+                    <MudSelect T="TicketChannel" @bind-Value="_model.Channel" Label="Canal" Variant="Variant.Outlined" Class="mb-3">
+                        @foreach (var channel in Enum.GetValues<TicketChannel>())
+                        {
+                            <MudSelectItem T="TicketChannel" Value="@channel">@Labels.Channel(channel)</MudSelectItem>
+                        }
+                    </MudSelect>
+                }
+
+                <MudTextField @bind-Value="_model.Title" For="@(() => _model.Title)" Label="Título" Variant="Variant.Outlined" Counter="150" MaxLength="150" Immediate="true" Class="mb-3" />
+                <MudTextField @bind-Value="_model.Description" For="@(() => _model.Description)" Label="Describe el problema" Variant="Variant.Outlined" Lines="6"
+                              HelperText="No incluyas números de tarjeta, claves ni tu cédula." Immediate="true" Class="mb-3" />
+
+                <MudSelect T="Guid?" @bind-Value="_model.CategoryId" Label="Categoría (opcional)" Variant="Variant.Outlined" Clearable="true" Class="mb-3"
+                           HelperText="Si no la sabes, la Mesa de Servicio la clasifica (con ayuda del clasificador de IA).">
+                    @foreach (var category in _categories)
+                    {
+                        <MudSelectItem T="Guid?" Value="@category.Id">@category.Name</MudSelectItem>
+                    }
+                </MudSelect>
+
+                <MudGrid Spacing="2">
+                    <MudItem xs="12" sm="6">
+                        <MudSelect T="Impact" @bind-Value="_model.Impact" Label="Impacto" Variant="Variant.Outlined">
+                            @foreach (var impact in Enum.GetValues<Impact>())
+                            {
+                                <MudSelectItem T="Impact" Value="@impact">@Labels.Impact(impact)</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudSelect T="Urgency" @bind-Value="_model.Urgency" Label="Urgencia" Variant="Variant.Outlined">
+                            @foreach (var urgency in Enum.GetValues<Urgency>())
+                            {
+                                <MudSelectItem T="Urgency" Value="@urgency">@Labels.Urgency(urgency)</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                </MudGrid>
+            </MudForm>
+
+            <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="2" Class="mt-4">
+                <MudButton Variant="Variant.Text" Href="tickets">Cancelar</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy" OnClick="SubmitAsync">Registrar ticket</MudButton>
+            </MudStack>
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" md="4">
+        <MudPaper Class="pa-4" Elevation="1">
+            <MudText Typo="Typo.subtitle2" Class="mud-text-secondary">Prioridad calculada (ITIL: impacto × urgencia)</MudText>
+            <div class="mt-2" aria-live="polite">
+                <Chips Kind="Chips.ChipKind.Priority" Priority="@PreviewPriority" />
+            </div>
+            <MudText Typo="Typo.body2" Class="mt-3">Nivel estándar: @PriorityHelp</MudText>
+            <MudDivider Class="my-3" />
+            <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                El tiempo de respuesta y de resolución se cuenta en horario hábil de Ecuador (lunes a viernes, 08:00–17:00), sin feriados nacionales. Las incidencias críticas se atienden 24×7.
+            </MudText>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private readonly CreateTicketRequest _model = new();
+    private readonly Func<object, string, Task<IEnumerable<string>>> _validation = FormValidation.For(new Helpdesk.Contracts.Validation.CreateTicketRequestValidator());
+    private MudForm? _form;
+    private List<CategoryDto> _categories = [];
+    private CustomerDto? _customer;
+    private bool _busy;
+
+    // La misma matriz del dominio que usa la API: el front y el servidor nunca discrepan.
+    private Priority PreviewPriority => PriorityMatrix.Calculate(_model.Impact, _model.Urgency);
+
+    private string PriorityHelp => PreviewPriority switch
+    {
+        Priority.Critical => "primera respuesta en 30 min y resolución en 4 h (24×7).",
+        Priority.High => "primera respuesta en 1 h hábil y resolución en 8 h hábiles.",
+        Priority.Medium => "primera respuesta en 4 h hábiles y resolución en 3 días hábiles.",
+        Priority.Low => "primera respuesta en 1 día hábil y resolución en 5 días hábiles.",
+        _ => "se planifica; respuesta en 2 días hábiles y resolución en 10.",
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _categories = (await Api.CategoriesAsync()).Where(c => c.IsActive).ToList();
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Friendly, Severity.Error);
+        }
+    }
+
+    private async Task<IEnumerable<CustomerDto>> SearchCustomersAsync(string? text, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return (await Api.CustomersAsync(text, pageSize: 20)).Items.Where(c => c.IsActive);
+        }
+        catch (ApiException)
+        {
+            return [];
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        await _form!.ValidateAsync();
+        if (!_form.IsValid || (Session.IsStaff && _customer is null))
+        {
+            if (Session.IsStaff && _customer is null)
+            {
+                Snackbar.Add("Elige el cliente del ticket.", Severity.Warning);
+            }
+
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            _model.CustomerId = _customer?.Id;
+            var created = await Api.CreateTicketAsync(_model);
+            Snackbar.Add($"Ticket {created.Number} registrado.", Severity.Success);
+            Navigation.NavigateTo($"tickets/{created.Id}");
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Friendly, Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

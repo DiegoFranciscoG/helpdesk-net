@@ -1,0 +1,64 @@
+@* Diálogo genérico para pedir un texto (motivo, resumen de solución). *@
+<MudDialog>
+    <DialogContent>
+        @if (!string.IsNullOrEmpty(Message))
+        {
+            <MudText Typo="Typo.body2" Class="mb-3">@Message</MudText>
+        }
+
+        @if (AskText)
+        {
+            <MudTextField T="string" @bind-Value="_text" Label="@Label" Variant="Variant.Outlined" Lines="@Lines" Immediate="true" MaxLength="@MaxLength" Counter="@MaxLength"
+                          Error="@(_touched && Required && string.IsNullOrWhiteSpace(_text))" ErrorText="Este campo es obligatorio." AutoFocus="true" />
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancelar</MudButton>
+        <MudButton Variant="Variant.Filled" Color="@ConfirmColor" OnClick="Confirm">@ConfirmText</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private string _text = string.Empty;
+    private bool _touched;
+
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter]
+    public string? Message { get; set; }
+
+    [Parameter]
+    public bool AskText { get; set; } = true;
+
+    [Parameter]
+    public string Label { get; set; } = "Motivo";
+
+    [Parameter]
+    public bool Required { get; set; } = true;
+
+    [Parameter]
+    public int Lines { get; set; } = 3;
+
+    [Parameter]
+    public int MaxLength { get; set; } = 500;
+
+    [Parameter]
+    public string ConfirmText { get; set; } = "Confirmar";
+
+    [Parameter]
+    public Color ConfirmColor { get; set; } = Color.Primary;
+
+    private void Confirm()
+    {
+        _touched = true;
+        if (AskText && Required && string.IsNullOrWhiteSpace(_text))
+        {
+            return;
+        }
+
+        MudDialog.Close(DialogResult.Ok(_text.Trim()));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

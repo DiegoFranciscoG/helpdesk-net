@@ -51,12 +51,9 @@ internal sealed class UserAdminService(
         };
 
         var created = await userManager.CreateAsync(user, request.Password);
-        if (!created.Succeeded)
-        {
-            throw new BusinessRuleException("user_rejected", string.Join(" ", created.Errors.Select(e => e.Description)));
-        }
+        created.EnsureSucceeded();
 
-        await userManager.AddToRoleAsync(user, request.Role);
+        (await userManager.AddToRoleAsync(user, request.Role)).EnsureSucceeded();
         foreach (var team in teams)
         {
             team.AddMember(user.Id, isLead: false, clock.GetUtcNow());
@@ -75,10 +72,10 @@ internal sealed class UserAdminService(
 
         var user = await userManager.FindByIdAsync(userId.ToString()) ?? throw new NotFoundException("Usuario");
         user.IsActive = isActive;
-        await userManager.UpdateAsync(user);
+        (await userManager.UpdateAsync(user)).EnsureSucceeded();
         if (!isActive)
         {
-            await userManager.UpdateSecurityStampAsync(user);
+            (await userManager.UpdateSecurityStampAsync(user)).EnsureSucceeded();
             await RevokeSessionsAsync([user.Id], cancellationToken);
         }
     }
