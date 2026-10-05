@@ -8,7 +8,9 @@
     <Project Path="src/Helpdesk.Web/Helpdesk.Web.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Helpdesk.E2ETests/Helpdesk.E2ETests.csproj" />
     <Project Path="tests/Helpdesk.IntegrationTests/Helpdesk.IntegrationTests.csproj" />
     <Project Path="tests/Helpdesk.UnitTests/Helpdesk.UnitTests.csproj" />
+    <Project Path="tests/Helpdesk.Web.Tests/Helpdesk.Web.Tests.csproj" />
   </Folder>
 </Solution>
