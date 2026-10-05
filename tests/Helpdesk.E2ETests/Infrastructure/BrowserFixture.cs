@@ -65,7 +65,9 @@ public sealed class BrowserFixture : IAsyncLifetime
                 throw new InvalidOperationException("La API limitó los inicios de sesión (429). Para e2e levanta la API con RateLimiting__AuthPerMinute=60.", ex);
             }
 
-            throw;
+            await ScreenshotAsync(page, $"fallo-login-{email.Split('@')[0]}");
+            var alerts = await page.GetByRole(AriaRole.Alert).AllInnerTextsAsync();
+            throw new InvalidOperationException($"El login de {email} no salió de /login ({page.Url}). Alertas: {string.Join(" | ", alerts)}", ex);
         }
 
         return page;

@@ -1,0 +1,43 @@
+# Plantilla procesada con envsubst al arrancar: solo se reemplazan variables de entorno definidas
+# (HELPDESK_API_URL, HELPDESK_API_WS_URL); las variables propias de nginx quedan intactas.
+server {
+    listen 8080;
+    server_name _;
+    root /usr/share/nginx/html;
+    server_tokens off;
+
+    # Cabeceras de seguridad (OWASP Secure Headers Project). La CSP permite el runtime WebAssembly
+    # ('wasm-unsafe-eval'), los estilos en línea de MudBlazor y conexiones solo a la API configurada.
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' ${HELPDESK_API_URL} ${HELPDESK_API_WS_URL}; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "no-referrer" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;
+    add_header Cross-Origin-Opener-Policy "same-origin" always;
+
+    # dotnet publish ya generó las versiones .gz de cada archivo.
+    gzip_static on;
+
+    location = /healthz {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    # Configuración pública del front generada desde el entorno: solo la URL de la API, nunca secretos.
+    location = /appsettings.json {
+        default_type application/json;
+        expires -1;
+        return 200 '{"Api":{"BaseUrl":"${HELPDESK_API_URL}"}}';
+    }
+
+    # index.html siempre se revalida para que un despliegue nuevo se vea al recargar.
+    location = /index.html {
+        expires -1;
+    }
+
+    # Rutas del SPA (/tickets/..., /reportes): si no es un archivo, se sirve index.html y enruta Blazor.
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}

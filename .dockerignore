@@ -1,0 +1,19 @@
+# Solo el código necesario entra al contexto de build: ni secretos, ni artefactos, ni historial.
+.git
+.github
+.vs
+.vscode
+.idea
+**/bin
+**/obj
+**/TestResults
+coverage
+artifacts
+publish
+data
+tests
+docs
+.env
+.env.*
+**/*.user
+**/appsettings.*.local.json
