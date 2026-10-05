@@ -65,6 +65,7 @@ Fecha de consulta de todas las fuentes: **2026-10-04**. Cuando la fuente era un 
 | 35 | OWASP — *Password Storage Cheat Sheet* | https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html | 2026-10-04 | PBKDF2-HMAC-SHA512 con **220 000 iteraciones** (SHA-256: 600 000). Como Identity V3 usa HMAC-SHA512 y por defecto 100 000, se sube `IterationCount` a 220 000. |
 | 36 | NIST SP 800-63B-4 *Digital Identity Guidelines — Authentication* | https://pages.nist.gov/800-63-4/sp800-63b.html | 2026-10-04 | Contraseñas como único factor: **mínimo 15 caracteres**, máximo permitido de al menos 64, **sin reglas de composición** y comparación contra una **lista de contraseñas comunes**. |
 | 37 | IETF — RFC 9700 *Best Current Practice for OAuth 2.0 Security* | https://www.rfc-editor.org/info/rfc9700/ | 2026-10-04 | Los *refresh tokens* de clientes públicos **deben** estar ligados al emisor o **rotarse** (§4.14); la reutilización de un token ya rotado indica robo y revoca la familia. |
+| 45 | OWASP *Top 10 for LLM Applications* 2025 | https://genai.owasp.org/llm-top-10/ | 2026-10-05 | P27 es un clasificador (transformer MiniLM), no un LLM generativo; aplican por analogía **LLM02** (el texto se anonimiza antes de persistirse en P27), **LLM05** (la salida se valida como no confiable), **LLM06** (sin agencia: la sugerencia nunca se aplica sola) y **LLM09** (revisión humana obligatoria). LLM01 y LLM07 no aplican: no hay *prompts*. |
 
 ## 6. Protección de datos personales (Ecuador)
 
