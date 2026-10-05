@@ -15,9 +15,12 @@
     </PackageReference>
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
     <PackageReference Include="EFCore.NamingConventions" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Helpdesk.Domain\Helpdesk.Domain.csproj" />
+    <ProjectReference Include="..\Helpdesk.Application\Helpdesk.Application.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Helpdesk.UnitTests" />

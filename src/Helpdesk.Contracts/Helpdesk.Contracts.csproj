@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Contratos HTTP compartidos por la API y el front Blazor (mismas clases y mismas validaciones). -->
+  <PropertyGroup>
+    <RootNamespace>Helpdesk.Contracts</RootNamespace>
+    <IsTrimmable>true</IsTrimmable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="FluentValidation" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Helpdesk.Domain\Helpdesk.Domain.csproj" />
+  </ItemGroup>
+</Project>

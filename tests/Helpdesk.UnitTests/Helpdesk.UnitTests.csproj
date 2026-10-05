@@ -4,7 +4,7 @@
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
     <!-- Nombres de prueba con guiones bajos y sin ConfigureAwait -->
-    <NoWarn>$(NoWarn);CA1707;CA2007;CA1515;CA1861</NoWarn>
+    <NoWarn>$(NoWarn);CA1707;CA2007;CA1515;CA1861;xUnit1051</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="xunit.v3" />
@@ -20,5 +20,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Helpdesk.Domain\Helpdesk.Domain.csproj" />
     <ProjectReference Include="..\..\src\Helpdesk.Infrastructure\Helpdesk.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Helpdesk.Application\Helpdesk.Application.csproj" />
+    <ProjectReference Include="..\..\src\Helpdesk.Contracts\Helpdesk.Contracts.csproj" />
   </ItemGroup>
 </Project>
