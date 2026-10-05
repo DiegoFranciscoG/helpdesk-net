@@ -108,6 +108,20 @@ public sealed class TicketWorkflowTests(HelpdeskFixture fixture)
         list.Items.Should().NotContain(t => t.Id == ticket.Id).And.OnlyContain(t => t.CustomerCode == "CLI-00003");
     }
 
+    [Theory]
+    [InlineData("breached")]
+    [InlineData("at_risk")]
+    [InlineData("paused")]
+    public async Task Demo_seed_leaves_a_live_backlog_for_the_dashboard(string sla)
+    {
+        var supervisor = await fixture.ClientAsAsync("supervisor");
+
+        var page = await (await supervisor.GetAsync($"/api/v1/tickets?sla={sla}&pageSize=50")).ReadAsync<PagedResult<TicketListItemDto>>();
+
+        page.TotalCount.Should().BeGreaterThan(0, "la demo debe mostrar tickets abiertos en cada estado de SLA");
+        page.Items.Should().OnlyContain(t => t.Status != TicketStatus.Closed && t.Status != TicketStatus.Cancelled);
+    }
+
     [Fact]
     public async Task Agents_outside_the_queue_cannot_see_the_ticket()
     {

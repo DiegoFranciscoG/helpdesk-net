@@ -116,9 +116,9 @@ public sealed partial class DemoDataSeeder(
         ("Error al iniciar sesión en la app", 7, BacklogStage.InProgress, true, 125),
         ("El cajero no entregó el dinero", 1, BacklogStage.New, false, 150),
         ("Transferencia no llega al destinatario", 3, BacklogStage.OnHold, true, 40),
-        ("Cobro duplicado en un comercio", 5, BacklogStage.Assigned, true, 82),
+        ("Cobro duplicado en un comercio", 5, BacklogStage.InProgress, true, 82),
         ("Mi tarjeta de débito no llega", 0, BacklogStage.New, false, 10),
-        ("Actualizar datos de contacto", 2, BacklogStage.Assigned, true, 30),
+        ("Actualizar datos de contacto", 2, BacklogStage.Assigned, false, 40),
         ("Cobro de comisión que no entiendo", 0, BacklogStage.Resolved, true, 70),
     ];
 
@@ -256,14 +256,14 @@ public sealed partial class DemoDataSeeder(
             return;
         }
 
-        ticket.Assign(agentId, supervisor, At(0.03));
+        ticket.Assign(agentId, supervisor, At(0.01));
         if (stage == BacklogStage.Assigned)
         {
             return;
         }
 
-        ticket.Start(agent, terms, At(0.06));
-        ticket.AddComment(agentId, ActorRole.Agent, StaffReplies[0], isInternal: false, terms, At(0.08));
+        ticket.Start(agent, terms, At(0.02));
+        ticket.AddComment(agentId, ActorRole.Agent, StaffReplies[0], isInternal: false, terms, At(0.03));
         switch (stage)
         {
             case BacklogStage.OnHold:
