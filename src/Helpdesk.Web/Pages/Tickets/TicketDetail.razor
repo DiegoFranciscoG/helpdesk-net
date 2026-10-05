@@ -7,6 +7,7 @@
 @inject IDialogService Dialogs
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
+@inject NavigationManager Navigation
 
 <PageTitle>@(_ticket?.Number ?? "Ticket") · helpdesk-net</PageTitle>
 
@@ -332,6 +333,14 @@ else
         }
         catch (ApiException ex) when (ex.Status == System.Net.HttpStatusCode.NotFound)
         {
+            if (_ticket is not null)
+            {
+                // Pasó a una cola ajena mientras se veía (transferencia, sugerencia aceptada o cambio de otra persona).
+                Snackbar.Add($"{_ticket.Number} pasó a otra cola y ya no está entre las tuyas.", Severity.Info);
+                Navigation.NavigateTo("tickets");
+                return;
+            }
+
             _notFound = true;
         }
         catch (ApiException ex)
@@ -438,6 +447,11 @@ else
         if (await dialog.Result is { Canceled: false, Data: TransferRequest request })
         {
             await RunAsync(() => Api.TransferAsync(Id, request, _ticket.Version), "Ticket transferido.");
+            if (Session.User?.Role == "Agent")
+            {
+                // Si la cola de destino no es suya, la recarga responde 404 y vuelve al listado.
+                await LoadAsync();
+            }
         }
     }
 

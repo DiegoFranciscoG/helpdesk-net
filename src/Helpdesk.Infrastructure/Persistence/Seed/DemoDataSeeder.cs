@@ -107,19 +107,20 @@ public sealed partial class DemoDataSeeder(
     /// <summary>
     /// Bandeja abierta "en vivo": tickets ubicados respecto de la hora de arranque para que el tablero muestre
     /// casos en riesgo, incumplidos, en pausa y pendientes de confirmación. La edad es un porcentaje del objetivo
-    /// de SLA (primera respuesta o resolución), así sigue siendo coherente si cambian las reglas.
+    /// de SLA (primera respuesta o resolución), así sigue siendo coherente si cambian las reglas. Los no clasificados
+    /// esperan en la Mesa de Servicio la sugerencia del clasificador (P27) y la revisión de un agente.
     /// </summary>
-    private static readonly (string Title, int Customer, BacklogStage Stage, bool OfResolution, int AgePercent)[] LiveBacklog =
+    private static readonly (string Title, int Customer, BacklogStage Stage, bool OfResolution, int AgePercent, bool Classified)[] LiveBacklog =
     [
-        ("Consumos que no reconozco", 2, BacklogStage.New, false, 85),
-        ("Perdí mi celular con la app instalada", 6, BacklogStage.InProgress, true, 85),
-        ("Error al iniciar sesión en la app", 7, BacklogStage.InProgress, true, 125),
-        ("El cajero no entregó el dinero", 1, BacklogStage.New, false, 150),
-        ("Transferencia no llega al destinatario", 3, BacklogStage.OnHold, true, 40),
-        ("Cobro duplicado en un comercio", 5, BacklogStage.InProgress, true, 82),
-        ("Mi tarjeta de débito no llega", 0, BacklogStage.New, false, 10),
-        ("Actualizar datos de contacto", 2, BacklogStage.Assigned, false, 40),
-        ("Cobro de comisión que no entiendo", 0, BacklogStage.Resolved, true, 70),
+        ("Consumos que no reconozco", 2, BacklogStage.New, false, 85, false),
+        ("Perdí mi celular con la app instalada", 6, BacklogStage.InProgress, true, 85, true),
+        ("Error al iniciar sesión en la app", 7, BacklogStage.InProgress, true, 125, true),
+        ("El cajero no entregó el dinero", 1, BacklogStage.New, false, 150, true),
+        ("Transferencia no llega al destinatario", 3, BacklogStage.OnHold, true, 40, true),
+        ("Cobro duplicado en un comercio", 5, BacklogStage.InProgress, true, 82, true),
+        ("Mi tarjeta de débito no llega", 0, BacklogStage.New, false, 10, false),
+        ("Actualizar datos de contacto", 2, BacklogStage.Assigned, false, 40, true),
+        ("Cobro de comisión que no entiendo", 0, BacklogStage.Resolved, true, 70, true),
     ];
 
     private enum BacklogStage
@@ -223,7 +224,7 @@ public sealed partial class DemoDataSeeder(
             var template = Templates.First(t => t.Title == item.Title);
             var (customer, customerUserId) = customers[item.Customer];
             var category = categories.First(c => c.Code == template.Category);
-            var team = teams.First(t => t.Id == category.DefaultTeamId);
+            var team = item.Classified ? teams.First(t => t.Id == category.DefaultTeamId) : teams.First(t => t.Code == ReferenceData.ServiceDeskTeamCode);
             var agentId = PickAgent(team, random) ?? staffIds[$"agente@{DemoDomain}"];
             var terms = await sla.SelectAsync(PriorityMatrix.Calculate(template.Impact, template.Urgency), customer.ServiceTier, cancellationToken);
             var target = item.OfResolution ? terms.ResolutionMinutes : terms.FirstResponseMinutes;
@@ -232,7 +233,7 @@ public sealed partial class DemoDataSeeder(
             // Sin aviso de privacidad aceptado, el ticket de la clienta demo lo registra un agente por teléfono.
             var byPortal = item.Customer != 0;
             var ticket = Ticket.Open(
-                new NewTicket(template.Title, template.Description, byPortal ? TicketChannel.Portal : TicketChannel.Phone, template.Impact, template.Urgency, category.Id, team.Id, customer.Id, byPortal ? customerUserId : agentId),
+                new NewTicket(template.Title, template.Description, byPortal ? TicketChannel.Portal : TicketChannel.Phone, template.Impact, template.Urgency, item.Classified ? category.Id : null, team.Id, customer.Id, byPortal ? customerUserId : agentId),
                 terms,
                 createdAt);
             await AdvanceAsync(ticket, item.Stage, terms, template.Category, agentId, supervisor, now, cancellationToken);

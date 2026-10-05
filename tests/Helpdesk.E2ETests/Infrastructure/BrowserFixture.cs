@@ -62,7 +62,7 @@ public sealed class BrowserFixture : IAsyncLifetime
         {
             if (await page.GetByText("Demasiados intentos").IsVisibleAsync())
             {
-                throw new InvalidOperationException("La API limitó los inicios de sesión (429). Para e2e levanta la API con RateLimiting__AuthPerMinute=60.", ex);
+                throw new InvalidOperationException("La API limitó los inicios de sesión (429). Para e2e sube HELPDESK_AUTH_RATE_LIMIT y HELPDESK_REFRESH_RATE_LIMIT.", ex);
             }
 
             await ScreenshotAsync(page, $"fallo-login-{email.Split('@')[0]}");

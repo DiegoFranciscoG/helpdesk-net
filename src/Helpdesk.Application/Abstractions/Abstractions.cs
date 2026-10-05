@@ -24,9 +24,6 @@ public interface ICurrentUser
 
     IReadOnlyCollection<string> Scopes { get; }
 
-    /// <summary>Versión del aviso de privacidad aceptada (viaja en el token).</summary>
-    string? PrivacyNoticeVersion { get; }
-
     Actor Actor { get; }
 
     /// <summary>Contexto de acceso con las colas del usuario (se consulta una vez por petición).</summary>
@@ -163,6 +160,9 @@ public interface IUserDirectory
     Task<IReadOnlyList<Guid>> GetCustomerUserIdsAsync(Guid customerId, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<StaffMember>> ListStaffAsync(Guid? teamId, CancellationToken cancellationToken);
+
+    /// <summary>Versión del aviso de privacidad aceptada, leída de la base (un token emitido antes de aceptar no la trae).</summary>
+    Task<string?> GetPrivacyNoticeVersionAsync(Guid userId, CancellationToken cancellationToken);
 }
 
 public sealed record StaffMember(Guid Id, string FullName, ActorRole Role, IReadOnlySet<Guid> TeamIds);

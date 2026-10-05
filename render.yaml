@@ -1,0 +1,47 @@
+# Render Blueprint (plan free) para la API. La base de datos vive en Neon: Render Postgres free expira a los 30 días.
+# El front se publica en GitHub Pages (.github/workflows/pages.yml). Guía completa: docs/despliegue.md
+# Los valores con "sync: false" se piden en el panel de Render al crear el Blueprint; nunca se versionan.
+services:
+  - type: web
+    name: helpdesk-net-api
+    runtime: docker
+    plan: free
+    # Virginia (us-east): misma zona que la base de Neon (aws-us-east-1) y baja latencia desde Ecuador.
+    region: virginia
+    dockerContext: .
+    dockerfilePath: ./src/Helpdesk.Api/Dockerfile
+    healthCheckPath: /health/live
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: "8080"
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      # Render termina TLS en su proxy: se confía en X-Forwarded-For para que el rate limiting vea la IP real.
+      - key: ReverseProxy__TrustForwardedHeaders
+        value: "true"
+      - key: Database__ApplyMigrationsOnStartup
+        value: "true"
+      - key: Database__SeedDemoData
+        value: "true"
+      # Cadena de Npgsql hacia Neon (endpoint directo, sin "-pooler"), p. ej.:
+      # Host=ep-xxxx.us-east-1.aws.neon.tech;Database=helpdesk;Username=helpdesk_owner;Password=...;SSL Mode=Require
+      - key: ConnectionStrings__Helpdesk
+        sync: false
+      - key: Jwt__SigningKey
+        generateValue: true
+      - key: Seed__DemoPassword
+        sync: false
+      - key: Cors__AllowedOrigins
+        value: https://diegofranciscog.github.io
+      - key: Integration__ClientId
+        value: nlp-tickets-es
+      - key: Integration__ClientSecret
+        generateValue: true
+      # Opcionales: clasificador nlp-tickets-es (P27) desplegado aparte.
+      - key: Nlp__BaseUrl
+        sync: false
+      - key: Nlp__ApiKey
+        sync: false
+      - key: Nlp__ReviewerApiKey
+        sync: false

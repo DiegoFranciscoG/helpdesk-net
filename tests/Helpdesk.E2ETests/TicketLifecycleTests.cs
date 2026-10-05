@@ -27,6 +27,7 @@ public sealed partial class TicketLifecycleTests(BrowserFixture fixture)
         await customer.GotoAsync("tickets/nuevo");
         await customer.GetByLabel("Título").FillAsync(title);
         await customer.GetByLabel("Describe el problema").FillAsync("Hice una transferencia a un proveedor esta mañana y sigue en estado pendiente.");
+        await fixture.ScreenshotAsync(customer, "flujo-1");
         await customer.GetByRole(AriaRole.Button, new() { Name = "Registrar ticket" }).ClickAsync();
         await customer.WaitForURLAsync(TicketUrl());
         await Expect(customer.GetByText("Nuevo", new() { Exact = true }).First).ToBeVisibleAsync();
@@ -34,12 +35,14 @@ public sealed partial class TicketLifecycleTests(BrowserFixture fixture)
         // Sin recargar: la lista de la supervisora se actualiza por SignalR.
         var row = supervisor.GetByRole(AriaRole.Row).Filter(new() { HasText = title });
         await Expect(row).ToBeVisibleAsync(new() { Timeout = 15_000 });
+        await fixture.ScreenshotAsync(supervisor, "flujo-2");
         await row.GetByRole(AriaRole.Link).First.ClickAsync();
         await supervisor.WaitForURLAsync(TicketUrl());
         await supervisor.GetByRole(AriaRole.Button, new() { Name = "Asignar", Exact = true }).ClickAsync();
         var dialog = supervisor.GetByRole(AriaRole.Dialog);
         await dialog.GetByRole(AriaRole.Combobox, new() { Name = "Asignar a" }).ClickAsync();
         await supervisor.GetByRole(AriaRole.Option).Filter(new() { HasText = "Carlos Vélez" }).ClickAsync();
+        await fixture.ScreenshotAsync(supervisor, "flujo-3");
         await dialog.GetByRole(AriaRole.Button, new() { Name = "Asignar", Exact = true }).ClickAsync();
         await Expect(supervisor.GetByText("Asignado", new() { Exact = true }).First).ToBeVisibleAsync();
         var ticketUrl = supervisor.Url;
@@ -54,10 +57,12 @@ public sealed partial class TicketLifecycleTests(BrowserFixture fixture)
 
         // El cliente recibe la respuesta pública en vivo, sin recargar.
         await Expect(customer.GetByText(reply)).ToBeVisibleAsync(new() { Timeout = 15_000 });
+        await fixture.ScreenshotAsync(customer, "flujo-4");
 
         await agent.GetByRole(AriaRole.Button, new() { Name = "Resolver" }).ClickAsync();
         var resolveDialog = agent.GetByRole(AriaRole.Dialog);
         await resolveDialog.GetByLabel("Solución aplicada").FillAsync(resolution);
+        await fixture.ScreenshotAsync(agent, "flujo-5");
         await resolveDialog.GetByRole(AriaRole.Button, new() { Name = "Confirmar" }).ClickAsync();
         await Expect(agent.GetByText("Resuelto", new() { Exact = true }).First).ToBeVisibleAsync();
         // El chip cambió de estado en vivo varias veces: su clase de color debe ser la del estado actual.
@@ -90,6 +95,63 @@ public sealed partial class TicketLifecycleTests(BrowserFixture fixture)
         await fixture.ScreenshotAsync(customer, "nuevo-ticket");
         await customer.Context.CloseAsync();
     }
+
+    [Fact]
+    public async Task Agent_who_transfers_outside_their_queues_is_sent_back_to_the_list()
+    {
+        fixture.SkipWhenDisabled();
+        var ticketUrl = await CreateTicketAsCustomerAsync($"Revisión de acceso {Stamp()}", "No reconozco un inicio de sesión en mi banca en línea desde otra ciudad.");
+
+        // Carlos atiende la Mesa de Servicio; al pasar el ticket a Fraude deja de tener acceso (404 por diseño).
+        var agent = await fixture.LoginAsync("agente");
+        await agent.GotoAsync(ticketUrl);
+        await agent.GetByRole(AriaRole.Button, new() { Name = "Transferir" }).ClickAsync();
+        var dialog = agent.GetByRole(AriaRole.Dialog);
+        await dialog.GetByRole(AriaRole.Combobox, new() { Name = "Cola de destino" }).ClickAsync();
+        await agent.GetByRole(AriaRole.Option).Filter(new() { HasText = "Fraude y Seguridad" }).ClickAsync();
+        await dialog.GetByLabel("Motivo").FillAsync("Posible acceso no autorizado: lo revisa el equipo de fraude.");
+        await dialog.GetByRole(AriaRole.Button, new() { Name = "Transferir" }).ClickAsync();
+
+        await Expect(agent.GetByText("pasó a otra cola y ya no está entre las tuyas")).ToBeVisibleAsync();
+        await Expect(agent).ToHaveURLAsync(new Regex("/tickets$"));
+        await agent.Context.CloseAsync();
+    }
+
+    [Fact]
+    public async Task Supervisor_reviews_the_real_classifier_suggestion()
+    {
+        fixture.SkipWhenDisabled();
+        Assert.SkipUnless(Environment.GetEnvironmentVariable("HELPDESK_E2E_NLP") == "1", "Requiere nlp-tickets-es (P27) conectado: define HELPDESK_E2E_NLP=1.");
+        var ticketUrl = await CreateTicketAsCustomerAsync($"Compras desconocidas {Stamp()}", "Aparecen tres compras en línea que no hice con mi tarjeta de crédito. Necesito bloquearla de inmediato.");
+
+        var supervisor = await fixture.LoginAsync("supervisor");
+        await supervisor.GotoAsync(ticketUrl);
+        await supervisor.GetByRole(AriaRole.Tab, new() { Name = "Sugerencia IA" }).ClickAsync();
+        // El worker clasifica el ticket recién creado y la notificación recarga la vista en vivo.
+        await Expect(supervisor.GetByText("Pendiente de revisión")).ToBeVisibleAsync(new() { Timeout = 60_000 });
+        await Expect(supervisor.GetByText("nlp-tickets-es · modelo", new() { Exact = false })).ToBeVisibleAsync();
+        await fixture.ScreenshotAsync(supervisor, "sugerencia-ia");
+
+        await supervisor.GetByRole(AriaRole.Button, new() { Name = "Aceptar" }).ClickAsync();
+        await Expect(supervisor.GetByText("Aceptada", new() { Exact = true })).ToBeVisibleAsync();
+        await Expect(supervisor.GetByText("Revisada por Lucía Paredes", new() { Exact = false })).ToBeVisibleAsync();
+        await supervisor.Context.CloseAsync();
+    }
+
+    private async Task<string> CreateTicketAsCustomerAsync(string title, string description)
+    {
+        var customer = await fixture.LoginAsync("luis.cardenas@correo.example");
+        await customer.GotoAsync("tickets/nuevo");
+        await customer.GetByLabel("Título").FillAsync(title);
+        await customer.GetByLabel("Describe el problema").FillAsync(description);
+        await customer.GetByRole(AriaRole.Button, new() { Name = "Registrar ticket" }).ClickAsync();
+        await customer.WaitForURLAsync(TicketUrl());
+        var url = customer.Url;
+        await customer.Context.CloseAsync();
+        return url;
+    }
+
+    private static string Stamp() => DateTime.UtcNow.ToString("HHmmssfff", CultureInfo.InvariantCulture);
 
     [GeneratedRegex(@"/tickets/[0-9a-f-]{36}$")]
     private static partial Regex TicketUrl();

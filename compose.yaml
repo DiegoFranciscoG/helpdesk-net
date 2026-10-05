@@ -48,8 +48,9 @@ services:
       Nlp__BaseUrl: ${HELPDESK_NLP_URL:-}
       Nlp__ApiKey: ${HELPDESK_NLP_API_KEY:-}
       Nlp__ReviewerApiKey: ${HELPDESK_NLP_REVIEWER_API_KEY:-}
-      # 5 intentos de login por minuto e IP; solo se sube para correr las pruebas e2e.
+      # 5 logins y 30 renovaciones de sesión por minuto e IP; solo se suben para las pruebas e2e (muchos navegadores, una IP).
       RateLimiting__AuthPerMinute: ${HELPDESK_AUTH_RATE_LIMIT:-5}
+      RateLimiting__RefreshPerMinute: ${HELPDESK_REFRESH_RATE_LIMIT:-30}
     volumes:
       - attachments:/data/attachments
     extra_hosts:
