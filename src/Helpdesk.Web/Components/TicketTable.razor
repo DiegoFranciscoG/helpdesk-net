@@ -5,17 +5,23 @@
         <MudTh>Número</MudTh>
         <MudTh>Título</MudTh>
         <MudTh>Estado</MudTh>
-        <MudTh>Prioridad</MudTh>
+        @if (!Compact)
+        {
+            <MudTh>Prioridad</MudTh>
+        }
         <MudTh>SLA</MudTh>
         @if (ShowCustomer)
         {
             <MudTh>Cliente</MudTh>
         }
-        <MudTh>Cola / asignado</MudTh>
-        <MudTh>Creado</MudTh>
+        @if (!Compact)
+        {
+            <MudTh>Cola / asignado</MudTh>
+            <MudTh>Creado</MudTh>
+        }
     </HeaderContent>
     <RowTemplate>
-        <MudTd DataLabel="Número"><MudLink Href="@($"tickets/{context.Id}")" Typo="Typo.body2">@context.Number</MudLink></MudTd>
+        <MudTd DataLabel="Número" Class="text-nowrap"><MudLink Href="@($"tickets/{context.Id}")" Typo="Typo.body2">@context.Number</MudLink></MudTd>
         <MudTd DataLabel="Título" Class="ticket-title">
             @context.Title
             @if (context.EscalationLevel == 2)
@@ -25,24 +31,43 @@
                 </MudTooltip>
             }
         </MudTd>
-        <MudTd DataLabel="Estado"><Chips Kind="Chips.ChipKind.Status" Status="@context.Status" /></MudTd>
-        <MudTd DataLabel="Prioridad"><Chips Kind="Chips.ChipKind.Priority" Priority="@context.Priority" /></MudTd>
+        @if (Compact)
+        {
+            <MudTd DataLabel="Estado">
+                <div class="chip-stack">
+                    <Chips Kind="Chips.ChipKind.Status" Status="@context.Status" />
+                    <Chips Kind="Chips.ChipKind.Priority" Priority="@context.Priority" />
+                </div>
+            </MudTd>
+        }
+        else
+        {
+            <MudTd DataLabel="Estado"><Chips Kind="Chips.ChipKind.Status" Status="@context.Status" /></MudTd>
+            <MudTd DataLabel="Prioridad"><Chips Kind="Chips.ChipKind.Priority" Priority="@context.Priority" /></MudTd>
+        }
         <MudTd DataLabel="SLA">
             <Chips Kind="Chips.ChipKind.Sla" Sla="@context.SlaState" />
             @if (context.SlaState is SlaState.OnTrack or SlaState.AtRisk or SlaState.Breached)
             {
-                <MudText Typo="Typo.caption" Class="d-block mud-text-secondary">@Labels.Relative(context.ResolutionDueAt, DateTimeOffset.UtcNow)</MudText>
+                @* Mientras falte la primera respuesta, ese es el reloj que manda (y el que explica un "Incumplido"). *@
+                var pendingResponse = context.FirstRespondedAt is null;
+                <MudText Typo="Typo.caption" Class="d-block mud-text-secondary">
+                    @(pendingResponse ? "1.ª respuesta" : "Resolución"): @Labels.Relative(Labels.ActiveDue(context), DateTimeOffset.UtcNow)
+                </MudText>
             }
         </MudTd>
         @if (ShowCustomer)
         {
             <MudTd DataLabel="Cliente">@context.CustomerName <MudText Typo="Typo.caption" Class="mud-text-secondary">@context.CustomerCode</MudText></MudTd>
         }
-        <MudTd DataLabel="Cola / asignado">
-            @context.TeamName
-            <MudText Typo="Typo.caption" Class="d-block mud-text-secondary">@(context.AssigneeName ?? "Sin asignar")</MudText>
-        </MudTd>
-        <MudTd DataLabel="Creado">@Labels.ShortDate(context.CreatedAt)</MudTd>
+        @if (!Compact)
+        {
+            <MudTd DataLabel="Cola / asignado">
+                @context.TeamName
+                <MudText Typo="Typo.caption" Class="d-block mud-text-secondary">@(context.AssigneeName ?? "Sin asignar")</MudText>
+            </MudTd>
+            <MudTd DataLabel="Creado">@Labels.ShortDate(context.CreatedAt)</MudTd>
+        }
     </RowTemplate>
     <NoRecordsContent>
         <MudText Typo="Typo.body2" Class="pa-4">@EmptyText</MudText>
@@ -52,6 +77,10 @@
 @code {
     [Parameter]
     public IReadOnlyList<TicketListItemDto> Items { get; set; } = [];
+
+    /// <summary>Versión angosta para tarjetas del tablero: oculta cola y fecha de creación.</summary>
+    [Parameter]
+    public bool Compact { get; set; }
 
     [Parameter]
     public bool Loading { get; set; }

@@ -34,7 +34,19 @@ html, body {
 }
 
 .ticket-title {
-  word-break: break-word;
+  min-width: 10rem;
+  overflow-wrap: break-word;
+}
+
+.text-nowrap {
+  white-space: nowrap;
+}
+
+.chip-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
 }
 
 .comment-internal {
@@ -93,4 +105,9 @@ html, body {
     transition: none !important;
     animation: none !important;
   }
+}
+
+/* FocusOnNavigate lleva el foco al h1 para lectores de pantalla; el contorno visual sobra en un título no interactivo. */
+h1:focus {
+  outline: none;
 }

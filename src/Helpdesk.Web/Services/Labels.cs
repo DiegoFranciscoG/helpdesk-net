@@ -159,6 +159,10 @@ public static class Labels
 
     public static string ShortDate(DateTimeOffset instant) => instant.ToLocalTime().ToString("dd MMM HH:mm", Spanish);
 
+    /// <summary>Vencimiento que manda: el de primera respuesta mientras falte; después, el de resolución.</summary>
+    public static DateTimeOffset ActiveDue(TicketListItemDto ticket) =>
+        ticket.FirstRespondedAt is null ? ticket.FirstResponseDueAt : ticket.ResolutionDueAt;
+
     /// <summary>"vence en 2 h 10 min" / "venció hace 35 min".</summary>
     public static string Relative(DateTimeOffset due, DateTimeOffset now)
     {
