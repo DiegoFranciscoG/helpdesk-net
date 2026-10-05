@@ -70,7 +70,7 @@
             <div class="mt-2" aria-live="polite">
                 <Chips Kind="Chips.ChipKind.Priority" Priority="@PreviewPriority" />
             </div>
-            <MudText Typo="Typo.body2" Class="mt-3">@PriorityHelp</MudText>
+            <MudText Typo="Typo.body2" Class="mt-3">Nivel estándar: @PriorityHelp</MudText>
             <MudDivider Class="my-3" />
             <MudText Typo="Typo.caption" Class="mud-text-secondary">
                 El tiempo de respuesta y de resolución se cuenta en horario hábil de Ecuador (lunes a viernes, 08:00–17:00), sin feriados nacionales. Las incidencias críticas se atienden 24×7.
@@ -92,11 +92,11 @@
 
     private string PriorityHelp => PreviewPriority switch
     {
-        Priority.Critical => "Primera respuesta en 30 min y resolución en 4 h (24×7).",
-        Priority.High => "Primera respuesta en 1 h hábil y resolución en 8 h hábiles.",
-        Priority.Medium => "Primera respuesta en 4 h hábiles y resolución en 3 días hábiles.",
-        Priority.Low => "Primera respuesta en 1 día hábil y resolución en 5 días hábiles.",
-        _ => "Se planifica: respuesta en 2 días hábiles y resolución en 10.",
+        Priority.Critical => "primera respuesta en 30 min y resolución en 4 h (24×7).",
+        Priority.High => "primera respuesta en 1 h hábil y resolución en 8 h hábiles.",
+        Priority.Medium => "primera respuesta en 4 h hábiles y resolución en 3 días hábiles.",
+        Priority.Low => "primera respuesta en 1 día hábil y resolución en 5 días hábiles.",
+        _ => "se planifica; respuesta en 2 días hábiles y resolución en 10.",
     };
 
     protected override async Task OnInitializedAsync()

@@ -173,6 +173,22 @@ public static class Labels
             ? $"{(int)span.TotalHours} h {span.Minutes} min"
             : $"{(int)span.TotalDays} d {span.Hours} h";
 
+    /// <summary>Objetivo de SLA: horas de reloj si el calendario es 24×7; si no, horas hábiles y su equivalente en jornadas de 8 h.</summary>
+    public static string Target(int minutes, bool is24x7)
+    {
+        var text = minutes < 60 ? $"{minutes} min" : $"{(minutes / 60.0).ToString("0.#", Spanish)} h";
+        if (is24x7)
+        {
+            return text;
+        }
+
+        const int WorkdayMinutes = 8 * 60;
+        var days = minutes / WorkdayMinutes;
+        return minutes >= WorkdayMinutes && minutes % WorkdayMinutes == 0
+            ? $"{text} hábiles ({days} {(days == 1 ? "día" : "días")})"
+            : $"{text} hábiles";
+    }
+
     public static string Hours(double? hours) => hours is null ? "—" : $"{hours.Value.ToString("0.#", Spanish)} h";
 
     public static string Percent(double? value) => value is null ? "—" : $"{value.Value.ToString("0.#", Spanish)} %";

@@ -28,8 +28,8 @@
                     <MudTd DataLabel="Regla"><Chips Kind="Chips.ChipKind.Priority" Priority="@context.Priority" /></MudTd>
                     <MudTd DataLabel="Nivel">@(context.ServiceTier is { } tier ? Labels.Tier(tier) : "Todos")</MudTd>
                     <MudTd DataLabel="Calendario">@context.CalendarName</MudTd>
-                    <MudTd DataLabel="Primera respuesta">@Labels.Duration(TimeSpan.FromMinutes(context.FirstResponseMinutes))</MudTd>
-                    <MudTd DataLabel="Resolución">@Labels.Duration(TimeSpan.FromMinutes(context.ResolutionMinutes))</MudTd>
+                    <MudTd DataLabel="Primera respuesta">@Labels.Target(context.FirstResponseMinutes, Is24x7(context))</MudTd>
+                    <MudTd DataLabel="Resolución">@Labels.Target(context.ResolutionMinutes, Is24x7(context))</MudTd>
                     <MudTd DataLabel="Aviso">@context.WarningPercent %</MudTd>
                 </RowTemplate>
                 <RowEditingTemplate>
@@ -124,6 +124,7 @@
 @code {
     private List<SlaPolicyDto> _policies = [];
     private CalendarDto? _office;
+    private HashSet<Guid> _alwaysOnCalendars = [];
     private UpdateSlaPolicyRequest _edit = new();
     private DateTime? _holidayDate;
     private string _holidayName = string.Empty;
@@ -136,13 +137,17 @@
         try
         {
             _policies = await Api.SlaPoliciesAsync();
-            _office = (await Api.CalendarsAsync()).FirstOrDefault(c => !c.Is24x7);
+            var calendars = await Api.CalendarsAsync();
+            _office = calendars.FirstOrDefault(c => !c.Is24x7);
+            _alwaysOnCalendars = [.. calendars.Where(c => c.Is24x7).Select(c => c.Id)];
         }
         catch (ApiException ex)
         {
             Snackbar.Add(ex.Friendly, Severity.Error);
         }
     }
+
+    private bool Is24x7(SlaPolicyDto policy) => _alwaysOnCalendars.Contains(policy.CalendarId);
 
     private void Backup(object item)
     {
