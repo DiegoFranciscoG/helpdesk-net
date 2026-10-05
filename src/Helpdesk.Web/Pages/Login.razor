@@ -62,9 +62,7 @@
         }
     }
 
-    private string SafeReturnUrl =>
-        // Solo rutas internas relativas: evita redirecciones abiertas.
-        !string.IsNullOrEmpty(ReturnUrl) && !ReturnUrl.Contains("//", StringComparison.Ordinal) && !ReturnUrl.Contains(':', StringComparison.Ordinal) ? ReturnUrl : string.Empty;
+    private string SafeReturnUrl => ReturnUrls.Sanitize(ReturnUrl);
 
     private async Task OnKeyUpAsync(KeyboardEventArgs args)
     {

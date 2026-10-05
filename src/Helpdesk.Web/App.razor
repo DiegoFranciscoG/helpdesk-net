@@ -14,7 +14,16 @@
         <Found Context="routeData">
             <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
                 <NotAuthorized>
-                    <RedirectToLogin />
+                    @if (context.User.Identity?.IsAuthenticated == true)
+                    {
+                        @* Con sesión pero sin el rol: redirigir al login provocaría un bucle login → página → login. *@
+                        <PageTitle>Sin permiso · helpdesk-net</PageTitle>
+                        <MudAlert Severity="Severity.Warning" Class="ma-4">No tienes permiso para ver esta página.</MudAlert>
+                    }
+                    else
+                    {
+                        <RedirectToLogin />
+                    }
                 </NotAuthorized>
                 <Authorizing>
                     <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
