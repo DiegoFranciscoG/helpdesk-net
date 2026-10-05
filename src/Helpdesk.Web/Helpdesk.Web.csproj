@@ -19,6 +19,12 @@
     <ProjectReference Include="..\Helpdesk.Contracts\Helpdesk.Contracts.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <!-- System.Text.Json y SignalR deserializan los DTO por reflexión: el trimming del publish borraba sus
+         constructores (NotSupportedException al iniciar sesión). Se preservan completos; son ensamblados pequeños. -->
+    <TrimmerRootAssembly Include="Helpdesk.Contracts" />
+    <TrimmerRootAssembly Include="Helpdesk.Domain" />
+  </ItemGroup>
+  <ItemGroup>
     <InternalsVisibleTo Include="Helpdesk.Web.Tests" />
   </ItemGroup>
 </Project>
