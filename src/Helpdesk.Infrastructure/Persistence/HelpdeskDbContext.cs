@@ -73,6 +73,16 @@ public sealed class HelpdeskDbContext(DbContextOptions<HelpdeskDbContext> option
         {
             builder.Entity(entityType.ClrType).Ignore(nameof(Entity.DomainEvents));
         }
+
+        // Las claves UUIDv7 las genera el dominio: EF no debe tratarlas como generadas por la base, o confundiría
+        // entidades nuevas agregadas a una colección con entidades existentes (UPDATE en lugar de INSERT).
+        foreach (var key in builder.Model.GetEntityTypes().Select(t => t.FindPrimaryKey()).OfType<Microsoft.EntityFrameworkCore.Metadata.IMutableKey>())
+        {
+            if (key.Properties is [{ ClrType: var type } property] && type == typeof(Guid))
+            {
+                property.ValueGenerated = Microsoft.EntityFrameworkCore.Metadata.ValueGenerated.Never;
+            }
+        }
     }
 
     private static void ConfigureIdentityTables(ModelBuilder builder)
