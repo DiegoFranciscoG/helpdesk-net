@@ -59,6 +59,8 @@ public sealed class HelpdeskFixture : IAsyncLifetime
         {
             ["ConnectionStrings:Helpdesk"] = ConnectionString(database),
             ["Jwt:SigningKey"] = Convert.ToBase64String(RandomNumberGenerator.GetBytes(48)),
+            // Sin ventana de gracia: las pruebas de reutilización no tienen que esperar; la ventana se prueba aparte.
+            ["Jwt:RefreshReuseGraceSeconds"] = "0",
             ["Database:ApplyMigrationsOnStartup"] = "true",
             ["Database:SeedDemoData"] = "true",
             ["Seed:DemoPassword"] = DemoPassword,

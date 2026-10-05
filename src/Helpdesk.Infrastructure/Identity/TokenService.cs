@@ -36,6 +36,13 @@ public sealed class JwtOptions
     [Range(1, 60)]
     public int ClientTokenMinutes { get; set; } = 15;
 
+    /// <summary>
+    /// Segundos en que un refresh token recién rotado aún se acepta (recarga de la pestaña con la rotación en vuelo).
+    /// Pasado ese tiempo, reutilizarlo se trata como robo y revoca la familia.
+    /// </summary>
+    [Range(0, 120)]
+    public int RefreshReuseGraceSeconds { get; set; } = 30;
+
     public SymmetricSecurityKey CreateSigningKey() => new(Encoding.UTF8.GetBytes(SigningKey));
 
     public TokenValidationParameters CreateValidationParameters() => new()

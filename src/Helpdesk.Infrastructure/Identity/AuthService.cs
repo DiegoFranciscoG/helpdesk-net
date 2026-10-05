@@ -69,12 +69,17 @@ internal sealed partial class AuthService(
         var stored = await db.RefreshTokens.FirstOrDefaultAsync(t => t.TokenHash == TokenService.Hash(refreshToken), cancellationToken)
             ?? throw new AuthenticationFailedException("Sesión inválida.");
 
+        var withinGrace = false;
         if (stored.RevokedAt is not null)
         {
-            // Reutilización de un token ya rotado: posible robo. Se revoca toda la familia.
-            await RevokeFamilyAsync(stored.FamilyId, "reuse_detected", now, cancellationToken);
-            LogRefreshReuse(logger, stored.UserId);
-            throw new AuthenticationFailedException("Sesión inválida.");
+            withinGrace = await IsWithinReuseGraceAsync(stored, now, cancellationToken);
+            if (!withinGrace)
+            {
+                // Reutilización de un token ya rotado: posible robo. Se revoca toda la familia.
+                await RevokeFamilyAsync(stored.FamilyId, "reuse_detected", now, cancellationToken);
+                LogRefreshReuse(logger, stored.UserId);
+                throw new AuthenticationFailedException("Sesión inválida.");
+            }
         }
 
         if (stored.ExpiresAt <= now)
@@ -89,9 +94,18 @@ internal sealed partial class AuthService(
             throw new AuthenticationFailedException("Sesión inválida.");
         }
 
-        var response = await IssueAsync(user, stored.FamilyId, stored.ExpiresAt, cancellationToken, previous: stored);
-        return response;
+        return await IssueAsync(user, stored.FamilyId, stored.ExpiresAt, cancellationToken, previous: withinGrace ? null : stored);
     }
+
+    /// <summary>
+    /// Carrera legítima: la pestaña se recargó mientras la rotación estaba en vuelo y nunca recibió el sucesor.
+    /// Se tolera solo si el token se rotó (no se revocó por logout, robo o desactivación), hace pocos segundos
+    /// y la familia sigue viva; es el mismo criterio de "período de gracia" de los proveedores de identidad.
+    /// </summary>
+    private async Task<bool> IsWithinReuseGraceAsync(RefreshToken stored, DateTimeOffset now, CancellationToken cancellationToken) =>
+        stored.RevokedReason == RefreshToken.RotatedReason
+        && now - stored.RevokedAt <= TimeSpan.FromSeconds(options.Value.RefreshReuseGraceSeconds)
+        && await db.RefreshTokens.AnyAsync(t => t.FamilyId == stored.FamilyId && t.RevokedAt == null && t.ExpiresAt > now, cancellationToken);
 
     public async Task LogoutAsync(string refreshToken, CancellationToken cancellationToken)
     {
@@ -150,7 +164,7 @@ internal sealed partial class AuthService(
         var plainRefresh = TokenService.NewRefreshToken();
         var refresh = new RefreshToken(user.Id, TokenService.Hash(plainRefresh), familyId, clock.GetUtcNow(), familyExpiresAt);
         db.RefreshTokens.Add(refresh);
-        previous?.Revoke("rotated", clock.GetUtcNow(), refresh.Id);
+        previous?.Revoke(RefreshToken.RotatedReason, clock.GetUtcNow(), refresh.Id);
         await db.SaveChangesAsync(cancellationToken);
 
         return new TokenResponse(accessToken, accessExpires, plainRefresh, familyExpiresAt, await ToDtoAsync(user, cancellationToken, role));

@@ -61,6 +61,8 @@ public static class RoleNames
 /// </summary>
 public sealed class RefreshToken
 {
+    public const string RotatedReason = "rotated";
+
     private RefreshToken()
     {
         TokenHash = string.Empty;
