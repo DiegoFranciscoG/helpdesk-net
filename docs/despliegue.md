@@ -68,7 +68,7 @@ GitHub Pages no permite cabeceras propias, así que la CSP del front llega como 
 
 ## 4. Verificación
 
-- Las pruebas e2e se pueden apuntar al despliegue. Sube antes `RateLimiting__AuthPerMinute` solo mientras corren:
+- Las pruebas e2e se pueden apuntar al despliegue. Sube antes `RateLimiting__AuthPerMinute` y `RateLimiting__RefreshPerMinute` solo mientras corren (todos los navegadores salen de una misma IP):
 
   ```bash
   HELPDESK_E2E_WEB_URL=https://diegofranciscog.github.io/helpdesk-net HELPDESK_E2E_PASSWORD=... dotnet test --project tests/Helpdesk.E2ETests
