@@ -11,7 +11,7 @@
 <MudText Typo="Typo.body2" Class="mud-text-secondary mb-4">Objetivos por prioridad y nivel de servicio. El tiempo se mide en horario hábil de Ecuador, sin feriados; la prioridad P1 corre 24×7.</MudText>
 
 <MudGrid Spacing="3">
-    <MudItem xs="12" lg="8">
+    <MudItem xs="12" lg="7">
         <MudPaper Class="pa-4" Elevation="1">
             <MudText Typo="Typo.h6" HtmlTag="h2" Class="mb-2">Reglas de SLA</MudText>
             <MudTable T="SlaPolicyDto" Items="@_policies" Dense="true" Hover="true" Elevation="0" Breakpoint="Breakpoint.Sm" CanCancelEdit="true"
@@ -27,7 +27,7 @@
                 <RowTemplate>
                     <MudTd DataLabel="Regla"><Chips Kind="Chips.ChipKind.Priority" Priority="@context.Priority" /></MudTd>
                     <MudTd DataLabel="Nivel">@(context.ServiceTier is { } tier ? Labels.Tier(tier) : "Todos")</MudTd>
-                    <MudTd DataLabel="Calendario">@context.CalendarName</MudTd>
+                    <MudTd DataLabel="Calendario"><span title="@context.CalendarName">@(Is24x7(context) ? "24×7" : "Hábil")</span></MudTd>
                     <MudTd DataLabel="Primera respuesta">@Labels.Target(context.FirstResponseMinutes, Is24x7(context))</MudTd>
                     <MudTd DataLabel="Resolución">@Labels.Target(context.ResolutionMinutes, Is24x7(context))</MudTd>
                     <MudTd DataLabel="Aviso">@context.WarningPercent %</MudTd>
@@ -35,7 +35,7 @@
                 <RowEditingTemplate>
                     <MudTd DataLabel="Regla"><Chips Kind="Chips.ChipKind.Priority" Priority="@context.Priority" /></MudTd>
                     <MudTd DataLabel="Nivel">@(context.ServiceTier is { } tier ? Labels.Tier(tier) : "Todos")</MudTd>
-                    <MudTd DataLabel="Calendario">@context.CalendarName</MudTd>
+                    <MudTd DataLabel="Calendario"><span title="@context.CalendarName">@(Is24x7(context) ? "24×7" : "Hábil")</span></MudTd>
                     <MudTd DataLabel="Primera respuesta"><MudNumericField T="int" @bind-Value="_edit.FirstResponseMinutes" Label="minutos" Min="1" /></MudTd>
                     <MudTd DataLabel="Resolución"><MudNumericField T="int" @bind-Value="_edit.ResolutionMinutes" Label="minutos" Min="1" /></MudTd>
                     <MudTd DataLabel="Aviso"><MudNumericField T="int" @bind-Value="_edit.WarningPercent" Label="%" Min="50" Max="95" /></MudTd>
@@ -48,7 +48,7 @@
         </MudPaper>
     </MudItem>
 
-    <MudItem xs="12" lg="4">
+    <MudItem xs="12" lg="5">
         <MudPaper Class="pa-4" Elevation="1">
             <MudText Typo="Typo.h6" HtmlTag="h2" Class="mb-2">Matriz ITIL de prioridad</MudText>
             <MudSimpleTable Dense="true" Elevation="0">
