@@ -1,0 +1,188 @@
+# Colección de ejemplos de la API de helpdesk-net (Visual Studio 2022+ o la extensión REST Client de VS Code).
+# Levanta el stack con `docker compose up --build` y exporta la contraseña demo antes de abrir el editor:
+#   HELPDESK_DEMO_PASSWORD=...   (la misma de tu .env)
+# Documentación interactiva: http://localhost:5080/docs · OpenAPI: http://localhost:5080/openapi/v1.json
+
+@baseUrl = http://localhost:5080
+@password = {{$processEnv HELPDESK_DEMO_PASSWORD}}
+
+### Salud (público)
+GET {{baseUrl}}/health/ready
+
+### 1. Login de la clienta demo (rol Customer)
+# @name customerLogin
+POST {{baseUrl}}/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "cliente@helpdesk.example",
+  "password": "{{password}}"
+}
+
+### 2. La clienta acepta el aviso de privacidad (LOPDP) antes de registrar solicitudes
+POST {{baseUrl}}/api/v1/auth/privacy-consent
+Authorization: Bearer {{customerLogin.response.body.$.accessToken}}
+Content-Type: application/json
+
+{
+  "version": "2026-10"
+}
+
+### 3. Nuevo ticket: la prioridad la calcula la API (ITIL, impacto × urgencia) y fija los vencimientos de SLA
+# @name created
+POST {{baseUrl}}/api/v1/tickets
+Authorization: Bearer {{customerLogin.response.body.$.accessToken}}
+Content-Type: application/json
+
+{
+  "title": "Transferencia interbancaria pendiente",
+  "description": "Hice una transferencia a un proveedor esta mañana y sigue en estado pendiente.",
+  "impact": "medium",
+  "urgency": "high"
+}
+
+### 4. Login del agente demo (rol Agent, cola Mesa de Servicio N1)
+# @name agentLogin
+POST {{baseUrl}}/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "agente@helpdesk.example",
+  "password": "{{password}}"
+}
+
+### 5. Bandeja del agente: abiertos, ordenados por vencimiento
+GET {{baseUrl}}/api/v1/tickets?openOnly=true&sort=due_date&pageSize=10
+Authorization: Bearer {{agentLogin.response.body.$.accessToken}}
+
+### 6. Detalle del ticket (la cabecera ETag sirve para la concurrencia optimista)
+# @name ticket
+GET {{baseUrl}}/api/v1/tickets/{{created.response.body.$.id}}
+Authorization: Bearer {{agentLogin.response.body.$.accessToken}}
+
+### 7. El agente se asigna el ticket (If-Match evita pisar cambios de otra persona: 412 si cambió)
+# @name assigned
+POST {{baseUrl}}/api/v1/tickets/{{created.response.body.$.id}}/assign
+Authorization: Bearer {{agentLogin.response.body.$.accessToken}}
+If-Match: {{ticket.response.headers.ETag}}
+Content-Type: application/json
+
+{
+  "assigneeId": "{{agentLogin.response.body.$.user.id}}"
+}
+
+### 8. Iniciar la atención (cuenta como primera respuesta del SLA)
+# @name started
+POST {{baseUrl}}/api/v1/tickets/{{created.response.body.$.id}}/transitions
+Authorization: Bearer {{agentLogin.response.body.$.accessToken}}
+If-Match: {{assigned.response.headers.ETag}}
+Content-Type: application/json
+
+{
+  "action": "start"
+}
+
+### 9. Respuesta pública a la clienta (una nota interna usaría "isInternal": true y ella no la vería)
+POST {{baseUrl}}/api/v1/tickets/{{created.response.body.$.id}}/comments
+Authorization: Bearer {{agentLogin.response.body.$.accessToken}}
+Content-Type: application/json
+
+{
+  "body": "Estamos validando la transferencia con el banco destino.",
+  "isInternal": false
+}
+
+### 10. Resolver: la clienta puede confirmar (cerrar) o reabrir; si no responde, se cierra en 3 días hábiles
+# @name refreshed
+GET {{baseUrl}}/api/v1/tickets/{{created.response.body.$.id}}
+Authorization: Bearer {{agentLogin.response.body.$.accessToken}}
+
+###
+POST {{baseUrl}}/api/v1/tickets/{{created.response.body.$.id}}/transitions
+Authorization: Bearer {{agentLogin.response.body.$.accessToken}}
+If-Match: {{refreshed.response.headers.ETag}}
+Content-Type: application/json
+
+{
+  "action": "resolve",
+  "resolutionSummary": "Se confirmó la acreditación con el banco destino."
+}
+
+### 11. La clienta califica la atención (CSAT): confirma la solución y cierra el ticket
+POST {{baseUrl}}/api/v1/tickets/{{created.response.body.$.id}}/survey
+Authorization: Bearer {{customerLogin.response.body.$.accessToken}}
+Content-Type: application/json
+
+{
+  "rating": 5,
+  "comment": "Atención clara y rápida."
+}
+
+### 12. Login de la supervisora demo (rol Supervisor)
+# @name supervisorLogin
+POST {{baseUrl}}/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "supervisor@helpdesk.example",
+  "password": "{{password}}"
+}
+
+### 13. Tickets con SLA incumplido
+GET {{baseUrl}}/api/v1/tickets?sla=breached&sort=due_date
+Authorization: Bearer {{supervisorLogin.response.body.$.accessToken}}
+
+### 14. Reporte del periodo: MTTR, cumplimiento de SLA por prioridad, volumen por categoría y CSAT
+GET {{baseUrl}}/api/v1/reports/overview
+Authorization: Bearer {{supervisorLogin.response.body.$.accessToken}}
+
+### 15. Carga y desempeño por agente
+GET {{baseUrl}}/api/v1/reports/agents
+Authorization: Bearer {{supervisorLogin.response.body.$.accessToken}}
+
+### 16. Exportación CSV (protegida contra inyección de fórmulas)
+GET {{baseUrl}}/api/v1/reports/tickets.csv
+Authorization: Bearer {{supervisorLogin.response.body.$.accessToken}}
+
+### 17. Reglas de SLA y calendario laboral con feriados de Ecuador
+GET {{baseUrl}}/api/v1/sla-policies
+Authorization: Bearer {{supervisorLogin.response.body.$.accessToken}}
+
+###
+GET {{baseUrl}}/api/v1/calendars
+Authorization: Bearer {{supervisorLogin.response.body.$.accessToken}}
+
+### 18. Control de acceso: la clienta solo ve sus tickets (un ticket ajeno responde 404, no 403, para no confirmar que existe)
+GET {{baseUrl}}/api/v1/tickets?sla=breached
+Authorization: Bearer {{customerLogin.response.body.$.accessToken}}
+
+### 19. Integración con nlp-tickets-es: token de cliente (client_credentials) con HELPDESK_INTEGRATION_CLIENT_SECRET
+# @name integrationToken
+POST {{baseUrl}}/api/v1/auth/token
+Content-Type: application/json
+
+{
+  "clientId": "nlp-tickets-es",
+  "clientSecret": "{{$processEnv HELPDESK_INTEGRATION_CLIENT_SECRET}}"
+}
+
+### 20. P27 consulta los tickets abiertos sin clasificar...
+# @name unclassified
+GET {{baseUrl}}/api/v1/integration/tickets/unclassified
+Authorization: Bearer {{integrationToken.response.body.$.accessToken}}
+
+### 21. ...y publica su sugerencia: queda pendiente hasta que un agente la acepta o la corrige (LOPDP art. 20)
+POST {{baseUrl}}/api/v1/integration/tickets/{{unclassified.response.body.$[0].id}}/suggestions
+Authorization: Bearer {{integrationToken.response.body.$.accessToken}}
+Content-Type: application/json
+
+{
+  "provider": "nlp-tickets-es",
+  "modelVersion": "minilm-int8-2026.10",
+  "categoryCode": "transfers",
+  "teamCode": "payments_transfers",
+  "urgency": "high",
+  "categoryConfidence": 0.93,
+  "teamConfidence": 0.91,
+  "decision": "auto_route"
+}
