@@ -1,0 +1,13 @@
+#!/bin/sh
+# Lo ejecuta (con "source") el entrypoint de nginx antes de procesar las plantillas.
+# Valida la URL pública de la API y deriva la de WebSocket (SignalR) para la CSP.
+# Sin una URL válida el contenedor no arranca: nada de valores por defecto silenciosos.
+
+if ! printf '%s' "${HELPDESK_API_URL:-}" | grep -Eq '^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?/?$'; then
+    echo "helpdesk-web: define HELPDESK_API_URL con el origen de la API, p. ej. https://api.ejemplo.com" >&2
+    exit 1
+fi
+
+HELPDESK_API_URL="${HELPDESK_API_URL%/}"
+HELPDESK_API_WS_URL="ws${HELPDESK_API_URL#http}"
+export HELPDESK_API_URL HELPDESK_API_WS_URL
