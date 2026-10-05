@@ -1,0 +1,33 @@
+# ---- Secretos y entorno
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+appsettings.*.local.json
+# ---- .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+TestResults/
+coverage/
+coverage-report/
+*.coverage
+*.coveragexml
+artifacts/
+publish/
+# ---- Datos locales (adjuntos subidos en desarrollo)
+/data/
+# ---- Playwright
+playwright-report/
+.playwright/
+# ---- IDE / SO
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db
