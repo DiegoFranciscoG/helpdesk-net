@@ -1,0 +1,128 @@
+@page "/"
+@attribute [Authorize]
+@implements IDisposable
+@inject SessionService Session
+@inject HelpdeskApi Api
+@inject RealtimeClient Realtime
+@inject NavigationManager Navigation
+
+<PageTitle>Inicio · helpdesk-net</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4" Wrap="Wrap.Wrap">
+    <div>
+        <MudText Typo="Typo.h4" HtmlTag="h1">Hola, @FirstName</MudText>
+        <MudText Typo="Typo.body2" Class="mud-text-secondary">@(Session.IsCustomer ? "Sigue el estado de tus solicitudes." : "Esto es lo que necesita atención ahora.")</MudText>
+    </div>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" Href="tickets/nuevo">Nuevo ticket</MudButton>
+</MudStack>
+
+@if (Session.IsStaff)
+{
+    <MudGrid Spacing="3" Class="mb-4">
+        <MudItem xs="6" md="3"><KpiCard Title="Asignados a mí" Value="@_mine.TotalCount.ToString()" Icon="@Icons.Material.Filled.AssignmentInd" /></MudItem>
+        <MudItem xs="6" md="3"><KpiCard Title="Sin asignar en mis colas" Value="@_unassigned.ToString()" Icon="@Icons.Material.Filled.Inbox" Color="Color.Info" /></MudItem>
+        <MudItem xs="6" md="3"><KpiCard Title="SLA en riesgo" Value="@_atRisk.TotalCount.ToString()" Icon="@Icons.Material.Filled.Warning" Color="Color.Warning" /></MudItem>
+        <MudItem xs="6" md="3"><KpiCard Title="SLA incumplido" Value="@_breached.TotalCount.ToString()" Icon="@Icons.Material.Filled.Error" Color="Color.Error" Caption="Tickets abiertos fuera de objetivo" /></MudItem>
+    </MudGrid>
+
+    <MudGrid Spacing="3">
+        <MudItem xs="12" lg="6">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.h6" HtmlTag="h2" Class="mb-2">Mis tickets abiertos</MudText>
+                <TicketTable Items="@_mine.Items" Loading="@_loading" ShowCustomer="false" EmptyText="No tienes tickets asignados." OnOpen="Open" />
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" lg="6">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.h6" HtmlTag="h2" Class="mb-2">Riesgo de SLA (por vencimiento)</MudText>
+                <TicketTable Items="@RiskItems" Loading="@_loading" ShowCustomer="false" EmptyText="Ningún ticket en riesgo." OnOpen="Open" />
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+else
+{
+    <MudPaper Class="pa-4" Elevation="1">
+        <MudText Typo="Typo.h6" HtmlTag="h2" Class="mb-2">Mis solicitudes recientes</MudText>
+        <TicketTable Items="@_mine.Items" Loading="@_loading" ShowCustomer="false" EmptyText="Aún no registras solicitudes." OnOpen="Open" />
+    </MudPaper>
+}
+
+@code {
+    private static readonly PagedResult<TicketListItemDto> Empty = new([], 1, 10, 0);
+    private PagedResult<TicketListItemDto> _mine = Empty;
+    private PagedResult<TicketListItemDto> _atRisk = Empty;
+    private PagedResult<TicketListItemDto> _breached = Empty;
+    private int _unassigned;
+    private bool _loading = true;
+    private CancellationTokenSource? _debounce;
+
+    private string FirstName => Session.User?.FullName.Split(' ')[0] ?? string.Empty;
+
+    private IReadOnlyList<TicketListItemDto> RiskItems => [.. _breached.Items.Concat(_atRisk.Items).OrderBy(t => t.ResolutionDueAt).Take(10)];
+
+    protected override async Task OnInitializedAsync()
+    {
+        Realtime.TicketChanged += OnTicketChanged;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            if (Session.IsStaff)
+            {
+                var mine = Api.ListTicketsAsync(new TicketQuery { AssignedToMe = true, OpenOnly = true, Sort = TicketSort.DueDate, PageSize = 10 });
+                var atRisk = Api.ListTicketsAsync(new TicketQuery { Sla = SlaState.AtRisk, Sort = TicketSort.DueDate, PageSize = 10 });
+                var breached = Api.ListTicketsAsync(new TicketQuery { Sla = SlaState.Breached, Sort = TicketSort.DueDate, PageSize = 10 });
+                var unassigned = Api.ListTicketsAsync(new TicketQuery { Status = TicketStatus.New, PageSize = 1 });
+                await Task.WhenAll(mine, atRisk, breached, unassigned);
+                (_mine, _atRisk, _breached, _unassigned) = (mine.Result, atRisk.Result, breached.Result, unassigned.Result.TotalCount);
+            }
+            else
+            {
+                _mine = await Api.ListTicketsAsync(new TicketQuery { PageSize = 10 });
+            }
+        }
+        catch (ApiException)
+        {
+            // La tabla queda vacía; el detalle del error se ve al navegar.
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void OnTicketChanged(TicketChangedMessage message)
+    {
+        // Varios eventos seguidos se agrupan en una sola recarga.
+        _debounce?.Cancel();
+        _debounce?.Dispose();
+        _debounce = new CancellationTokenSource();
+        var token = _debounce.Token;
+        _ = InvokeAsync(async () =>
+        {
+            try
+            {
+                await Task.Delay(400, token);
+                await LoadAsync();
+                StateHasChanged();
+            }
+            catch (TaskCanceledException)
+            {
+            }
+        });
+    }
+
+    private void Open(TicketListItemDto ticket) => Navigation.NavigateTo($"tickets/{ticket.Id}");
+
+    public void Dispose()
+    {
+        Realtime.TicketChanged -= OnTicketChanged;
+        _debounce?.Cancel();
+        _debounce?.Dispose();
+    }
+}

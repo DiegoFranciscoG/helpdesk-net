@@ -1,0 +1,33 @@
+@inject HelpdeskApi Api
+
+<MudDialog>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Class="mb-3">Escalamiento funcional: el ticket vuelve a estado Nuevo en la cola elegida y se libera el asignado. El SLA sigue corriendo.</MudText>
+        <MudSelect T="Guid?" @bind-Value="_teamId" Label="Cola de destino" Variant="Variant.Outlined" Class="mb-3">
+            @foreach (var team in _teams.Where(t => t.IsActive && t.Id != CurrentTeamId))
+            {
+                <MudSelectItem T="Guid?" Value="@team.Id">@team.Name</MudSelectItem>
+            }
+        </MudSelect>
+        <MudTextField T="string" @bind-Value="_reason" Label="Motivo" Variant="Variant.Outlined" Lines="2" MaxLength="500" Immediate="true" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => MudDialog.Cancel())">Cancelar</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(_teamId is null || string.IsNullOrWhiteSpace(_reason))"
+                   OnClick="@(() => MudDialog.Close(DialogResult.Ok(new TransferRequest { TeamId = _teamId!.Value, Reason = _reason.Trim() })))">Transferir</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<TeamDto> _teams = [];
+    private Guid? _teamId;
+    private string _reason = string.Empty;
+
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter]
+    public Guid CurrentTeamId { get; set; }
+
+    protected override async Task OnInitializedAsync() => _teams = await Api.TeamsAsync();
+}

@@ -1,0 +1,34 @@
+@* Chips de estado, prioridad y SLA: color + texto (el color nunca es la única señal, WCAG 1.4.1). *@
+@switch (Kind)
+{
+    case ChipKind.Status when Status is { } status:
+        <MudChip T="string" Size="Size.Small" Variant="Variant.Filled" Color="@Labels.StatusColor(status)">@Labels.Status(status)</MudChip>
+        break;
+    case ChipKind.Priority when Priority is { } priority:
+        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="@Labels.PriorityColor(priority)">@Labels.Priority(priority)</MudChip>
+        break;
+    case ChipKind.Sla when Sla is { } sla:
+        <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Icon="@Labels.SlaIcon(sla)" Color="@Labels.SlaColor(sla)">@Labels.Sla(sla)</MudChip>
+        break;
+}
+
+@code {
+    public enum ChipKind
+    {
+        Status,
+        Priority,
+        Sla,
+    }
+
+    [Parameter]
+    public ChipKind Kind { get; set; }
+
+    [Parameter]
+    public TicketStatus? Status { get; set; }
+
+    [Parameter]
+    public Priority? Priority { get; set; }
+
+    [Parameter]
+    public SlaState? Sla { get; set; }
+}

@@ -1,0 +1,96 @@
+html, body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+.boot-screen {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  color: #0f5c6e;
+}
+
+#blazor-error-ui {
+  background: #fff3cd;
+  bottom: 0;
+  box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.2);
+  display: none;
+  left: 0;
+  padding: 0.6rem 1.25rem 0.7rem 1.25rem;
+  position: fixed;
+  width: 100%;
+  z-index: 2000;
+}
+
+#blazor-error-ui .dismiss {
+  cursor: pointer;
+  position: absolute;
+  right: 0.75rem;
+  top: 0.5rem;
+  border: 0;
+  background: transparent;
+}
+
+.ticket-title {
+  word-break: break-word;
+}
+
+.comment-internal {
+  border-left: 4px solid var(--mud-palette-warning);
+  background: var(--mud-palette-warning-lighten, #fff8e1);
+}
+
+.comment-staff {
+  border-left: 4px solid var(--mud-palette-primary);
+}
+
+.comment-customer {
+  border-left: 4px solid var(--mud-palette-secondary);
+}
+
+.pre-wrap {
+  white-space: pre-wrap;
+}
+
+.kpi-value {
+  font-variant-numeric: tabular-nums;
+}
+
+.bar-track {
+  background: var(--mud-palette-background-gray);
+  border-radius: 4px;
+  height: 10px;
+  overflow: hidden;
+}
+
+.bar-fill {
+  background: var(--mud-palette-primary);
+  height: 100%;
+}
+
+.matrix-cell {
+  text-align: center;
+  font-weight: 600;
+}
+
+.skip-link {
+  position: absolute;
+  left: -999px;
+}
+
+.skip-link:focus {
+  left: 1rem;
+  top: 1rem;
+  z-index: 3000;
+  background: #fff;
+  padding: 0.5rem 1rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

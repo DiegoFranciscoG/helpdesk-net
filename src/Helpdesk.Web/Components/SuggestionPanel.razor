@@ -1,0 +1,147 @@
+@* Sugerencia del clasificador (P27): el agente acepta, corrige o descarta. Nunca se aplica sola (LOPDP art. 20). *@
+@inject HelpdeskApi Api
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+
+<MudStack Spacing="3">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Wrap="Wrap.Wrap">
+        <MudText Typo="Typo.body2" Class="mud-text-secondary">
+            Clasificador <b>nlp-tickets-es</b>: sugiere categoría, cola y urgencia. Tú decides.
+        </MudText>
+        @if (CanReview && Pending is null)
+        {
+            <MudButton Size="Size.Small" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.AutoAwesome" Disabled="_busy" OnClick="RequestAsync">Pedir sugerencia</MudButton>
+        }
+    </MudStack>
+
+    @if (Suggestions.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info" Dense="true">Aún no hay sugerencias para este ticket.</MudAlert>
+    }
+
+    @foreach (var s in Suggestions)
+    {
+        <MudPaper Outlined="true" Class="pa-3">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Wrap="Wrap.Wrap">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                    <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" Color="Color.Secondary" aria-hidden="true" />
+                    <MudText Typo="Typo.subtitle2">@Labels.Suggestion(s.Status)</MudText>
+                    @if (s.Decision == "human_review")
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined">El modelo pidió revisión humana</MudChip>
+                    }
+                </MudStack>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">@s.Provider · modelo @s.ModelVersion · @Labels.ShortDate(s.CreatedAt)</MudText>
+            </MudStack>
+
+            <MudSimpleTable Dense="true" Elevation="0" Class="mt-2">
+                <tbody>
+                    <tr>
+                        <th scope="row">Categoría</th>
+                        <td>@(s.CategoryName ?? (s.CategoryCode is null ? "—" : $"{s.CategoryCode} (no existe en el catálogo)"))</td>
+                        <td>@Confidence(s.CategoryConfidence)</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Cola</th>
+                        <td>@(s.TeamName ?? (s.TeamCode is null ? "—" : $"{s.TeamCode} (no existe en el catálogo)"))</td>
+                        <td>@Confidence(s.TeamConfidence)</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Urgencia</th>
+                        <td>@(s.Urgency is { } u ? Labels.Level(u) : "—")</td>
+                        <td>@(s.ResultingPriority is { } p ? $"→ {Labels.Priority(p)}" : string.Empty)</td>
+                    </tr>
+                </tbody>
+            </MudSimpleTable>
+
+            @if (s.Status == SuggestionStatus.Pending && CanReview)
+            {
+                <MudStack Row="true" Spacing="2" Justify="Justify.FlexEnd" Class="mt-2" Wrap="Wrap.Wrap">
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Disabled="_busy" OnClick="@(() => DismissAsync(s))">Descartar</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary" Disabled="_busy" OnClick="@(() => CorrectAsync(s))">Corregir</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" Disabled="@(_busy || (s.CategoryId is null && s.TeamId is null))" OnClick="@(() => AcceptAsync(s))">Aceptar</MudButton>
+                </MudStack>
+            }
+            else if (s.ReviewedByName is not null)
+            {
+                <MudText Typo="Typo.caption" Class="mt-2 d-block mud-text-secondary">Revisada por @s.ReviewedByName el @Labels.ShortDate(s.ReviewedAt!.Value)</MudText>
+            }
+        </MudPaper>
+    }
+</MudStack>
+
+@code {
+    private bool _busy;
+
+    [Parameter, EditorRequired]
+    public TicketDetailDto Ticket { get; set; } = null!;
+
+    [Parameter]
+    public IReadOnlyList<SuggestionDto> Suggestions { get; set; } = [];
+
+    [Parameter]
+    public bool CanReview { get; set; }
+
+    [Parameter]
+    public EventCallback OnChanged { get; set; }
+
+    private SuggestionDto? Pending => Suggestions.FirstOrDefault(s => s.Status == SuggestionStatus.Pending);
+
+    private static string Confidence(decimal? value) => value is null ? string.Empty : $"confianza {value.Value:P0}";
+
+    private Task RequestAsync() => RunAsync(async () =>
+    {
+        await Api.RequestSuggestionAsync(Ticket.Id);
+        Snackbar.Add("Sugerencia solicitada: te avisaremos cuando llegue.", Severity.Info);
+    });
+
+    private Task AcceptAsync(SuggestionDto s) => RunAsync(async () =>
+    {
+        await Api.AcceptSuggestionAsync(s.Id);
+        Snackbar.Add("Sugerencia aceptada: se actualizó la clasificación.", Severity.Success);
+    });
+
+    private Task DismissAsync(SuggestionDto s) => RunAsync(() => Api.DismissSuggestionAsync(s.Id));
+
+    private async Task CorrectAsync(SuggestionDto s)
+    {
+        var parameters = new DialogParameters<ClassifyDialog>
+        {
+            { d => d.CategoryId, s.CategoryId ?? Ticket.CategoryId },
+            { d => d.TeamId, s.TeamId ?? Ticket.TeamId },
+            { d => d.Impact, Ticket.Impact },
+            { d => d.Urgency, s.Urgency ?? Ticket.Urgency },
+            { d => d.ShowTeam, true },
+            { d => d.ShowImpact, false },
+            { d => d.ConfirmText, "Aplicar corrección" },
+        };
+        var dialog = await Dialogs.ShowAsync<ClassifyDialog>("Corregir sugerencia", parameters);
+        var result = await dialog.Result;
+        if (result is { Canceled: false, Data: ClassifyDialog.ClassificationChoice choice })
+        {
+            await RunAsync(async () =>
+            {
+                await Api.CorrectSuggestionAsync(s.Id, new CorrectSuggestionRequest { CategoryId = choice.CategoryId, TeamId = choice.TeamId, Urgency = choice.Urgency });
+                Snackbar.Add("Corrección aplicada y enviada al clasificador como retroalimentación.", Severity.Success);
+            });
+        }
+    }
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        _busy = true;
+        try
+        {
+            await action();
+            await OnChanged.InvokeAsync();
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Friendly, Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

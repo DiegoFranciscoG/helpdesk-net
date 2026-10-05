@@ -1,0 +1,67 @@
+@* Tabla de tickets reutilizable (tablero y listado). Muestra el semáforo de SLA con tiempo relativo. *@
+<MudTable T="TicketListItemDto" Items="@Items" Hover="true" Dense="true" Loading="@Loading" Breakpoint="Breakpoint.Sm"
+          OnRowClick="@(args => OnOpen.InvokeAsync(args.Item))" RowStyle="cursor:pointer" Elevation="0">
+    <HeaderContent>
+        <MudTh>Número</MudTh>
+        <MudTh>Título</MudTh>
+        <MudTh>Estado</MudTh>
+        <MudTh>Prioridad</MudTh>
+        <MudTh>SLA</MudTh>
+        @if (ShowCustomer)
+        {
+            <MudTh>Cliente</MudTh>
+        }
+        <MudTh>Cola / asignado</MudTh>
+        <MudTh>Creado</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Número"><MudLink Href="@($"tickets/{context.Id}")" Typo="Typo.body2">@context.Number</MudLink></MudTd>
+        <MudTd DataLabel="Título" Class="ticket-title">
+            @context.Title
+            @if (context.EscalationLevel == 2)
+            {
+                <MudTooltip Text="Escalado a líderes y supervisión">
+                    <MudIcon Icon="@Icons.Material.Filled.PriorityHigh" Color="Color.Error" Size="Size.Small" aria-label="Escalado" />
+                </MudTooltip>
+            }
+        </MudTd>
+        <MudTd DataLabel="Estado"><Chips Kind="Chips.ChipKind.Status" Status="@context.Status" /></MudTd>
+        <MudTd DataLabel="Prioridad"><Chips Kind="Chips.ChipKind.Priority" Priority="@context.Priority" /></MudTd>
+        <MudTd DataLabel="SLA">
+            <Chips Kind="Chips.ChipKind.Sla" Sla="@context.SlaState" />
+            @if (context.SlaState is SlaState.OnTrack or SlaState.AtRisk or SlaState.Breached)
+            {
+                <MudText Typo="Typo.caption" Class="d-block mud-text-secondary">@Labels.Relative(context.ResolutionDueAt, DateTimeOffset.UtcNow)</MudText>
+            }
+        </MudTd>
+        @if (ShowCustomer)
+        {
+            <MudTd DataLabel="Cliente">@context.CustomerName <MudText Typo="Typo.caption" Class="mud-text-secondary">@context.CustomerCode</MudText></MudTd>
+        }
+        <MudTd DataLabel="Cola / asignado">
+            @context.TeamName
+            <MudText Typo="Typo.caption" Class="d-block mud-text-secondary">@(context.AssigneeName ?? "Sin asignar")</MudText>
+        </MudTd>
+        <MudTd DataLabel="Creado">@Labels.ShortDate(context.CreatedAt)</MudTd>
+    </RowTemplate>
+    <NoRecordsContent>
+        <MudText Typo="Typo.body2" Class="pa-4">@EmptyText</MudText>
+    </NoRecordsContent>
+</MudTable>
+
+@code {
+    [Parameter]
+    public IReadOnlyList<TicketListItemDto> Items { get; set; } = [];
+
+    [Parameter]
+    public bool Loading { get; set; }
+
+    [Parameter]
+    public bool ShowCustomer { get; set; } = true;
+
+    [Parameter]
+    public string EmptyText { get; set; } = "No hay tickets.";
+
+    [Parameter]
+    public EventCallback<TicketListItemDto> OnOpen { get; set; }
+}

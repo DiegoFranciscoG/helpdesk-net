@@ -1,0 +1,249 @@
+@page "/admin/usuarios"
+@attribute [Authorize(Roles = "Admin")]
+@inject HelpdeskApi Api
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+<PageTitle>Usuarios y clientes · helpdesk-net</PageTitle>
+
+<MudText Typo="Typo.h4" HtmlTag="h1" Class="mb-3">Usuarios y clientes</MudText>
+
+<MudTabs Elevation="1" Rounded="true" ApplyEffectsToContainer="true" TabPanelsClass="pa-4">
+    <MudTabPanel Text="Usuarios" Icon="@Icons.Material.Filled.People">
+        <MudGrid Spacing="3">
+            <MudItem xs="12" lg="8">
+                <MudTable T="UserDto" Items="@_users" Dense="true" Hover="true" Elevation="0" Filter="FilterUser" Breakpoint="Breakpoint.Sm">
+                    <ToolBarContent>
+                        <MudTextField T="string" @bind-Value="_userSearch" Placeholder="Buscar usuario" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Immediate="true" Margin="Margin.Dense" />
+                    </ToolBarContent>
+                    <HeaderContent>
+                        <MudTh>Nombre</MudTh>
+                        <MudTh>Correo</MudTh>
+                        <MudTh>Rol</MudTh>
+                        <MudTh>Colas</MudTh>
+                        <MudTh>Activo</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Nombre">@context.FullName</MudTd>
+                        <MudTd DataLabel="Correo">@context.Email</MudTd>
+                        <MudTd DataLabel="Rol">@Labels.Role(context.Role)</MudTd>
+                        <MudTd DataLabel="Colas">@string.Join(", ", context.TeamIds.Select(id => _teams.FirstOrDefault(t => t.Id == id)?.Name).Where(n => n is not null))</MudTd>
+                        <MudTd DataLabel="Activo">
+                            <MudSwitch T="bool" Value="@context.IsActive" ValueChanged="@(v => SetActiveAsync(context, v))" Color="Color.Success" aria-label="@($"Activar o desactivar a {context.FullName}")" />
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudItem>
+            <MudItem xs="12" lg="4">
+                <MudPaper Outlined="true" Class="pa-4">
+                    <MudText Typo="Typo.h6" HtmlTag="h2" Class="mb-2">Nuevo usuario</MudText>
+                    <MudForm @ref="_userForm" Model="@_newUser" Validation="@_userValidation">
+                        <MudTextField @bind-Value="_newUser.FullName" For="@(() => _newUser.FullName)" Label="Nombre completo" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-2" />
+                        <MudTextField @bind-Value="_newUser.Email" For="@(() => _newUser.Email)" Label="Correo" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-2" />
+                        <MudTextField @bind-Value="_newUser.Password" For="@(() => _newUser.Password)" Label="Contraseña inicial (15+ caracteres)" InputType="InputType.Password" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-2"
+                                      HelperText="Mejor una frase larga que símbolos raros (NIST SP 800-63B)." autocomplete="new-password" />
+                        <MudSelect T="string" @bind-Value="_newUser.Role" For="@(() => _newUser.Role)" Label="Rol" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-2">
+                            @foreach (var role in new[] { "Agent", "Supervisor", "Admin", "Customer" })
+                            {
+                                <MudSelectItem T="string" Value="@role">@Labels.Role(role)</MudSelectItem>
+                            }
+                        </MudSelect>
+                        @if (_newUser.Role == "Customer")
+                        {
+                            <MudSelect T="Guid?" @bind-Value="_newUser.CustomerId" Label="Cliente" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-2">
+                                @foreach (var customer in _customers.Where(c => c.IsActive))
+                                {
+                                    <MudSelectItem T="Guid?" Value="@customer.Id">@customer.DisplayName (@customer.Code)</MudSelectItem>
+                                }
+                            </MudSelect>
+                        }
+                        else
+                        {
+                            <MudSelect T="Guid" @bind-SelectedValues="_newUserTeams" MultiSelection="true" Label="Colas" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-2"
+                                       ToStringFunc="@(id => _teams.FirstOrDefault(t => t.Id == id)?.Name ?? string.Empty)">
+                                @foreach (var team in _teams)
+                                {
+                                    <MudSelectItem T="Guid" Value="@team.Id">@team.Name</MudSelectItem>
+                                }
+                            </MudSelect>
+                        }
+                    </MudForm>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" OnClick="CreateUserAsync">Crear usuario</MudButton>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+    </MudTabPanel>
+
+    <MudTabPanel Text="Clientes" Icon="@Icons.Material.Filled.Business">
+        <MudGrid Spacing="3">
+            <MudItem xs="12" lg="8">
+                <MudTable T="CustomerDto" Items="@_customers" Dense="true" Hover="true" Elevation="0" Breakpoint="Breakpoint.Sm">
+                    <HeaderContent>
+                        <MudTh>Código</MudTh>
+                        <MudTh>Nombre</MudTh>
+                        <MudTh>Tipo</MudTh>
+                        <MudTh>Nivel</MudTh>
+                        <MudTh>Contacto</MudTh>
+                        <MudTh></MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Código">@context.Code</MudTd>
+                        <MudTd DataLabel="Nombre">@context.DisplayName</MudTd>
+                        <MudTd DataLabel="Tipo">@Labels.Kind(context.Kind)</MudTd>
+                        <MudTd DataLabel="Nivel">@Labels.Tier(context.ServiceTier)</MudTd>
+                        <MudTd DataLabel="Contacto">@(context.Email ?? "—")</MudTd>
+                        <MudTd>
+                            @if (context.AnonymizedAt is null)
+                            {
+                                <MudTooltip Text="Derecho de eliminación (LOPDP art. 15)">
+                                    <MudIconButton Icon="@Icons.Material.Filled.PersonOff" Size="Size.Small" Color="Color.Error" aria-label="@($"Anonimizar a {context.DisplayName}")" OnClick="@(() => AnonymizeAsync(context))" />
+                                </MudTooltip>
+                            }
+                            else
+                            {
+                                <MudChip T="string" Size="Size.Small">Anonimizado</MudChip>
+                            }
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudItem>
+            <MudItem xs="12" lg="4">
+                <MudPaper Outlined="true" Class="pa-4">
+                    <MudText Typo="Typo.h6" HtmlTag="h2" Class="mb-2">Nuevo cliente</MudText>
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary d-block mb-2">Solo los datos mínimos: no se registra cédula ni RUC.</MudText>
+                    <MudTextField T="string" @bind-Value="_newCustomer.DisplayName" Label="Nombre o razón social" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-2" />
+                    <MudSelect T="Helpdesk.Domain.Customers.CustomerKind" @bind-Value="_newCustomer.Kind" Label="Tipo" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-2">
+                        @foreach (var kind in Enum.GetValues<Helpdesk.Domain.Customers.CustomerKind>())
+                        {
+                            <MudSelectItem T="Helpdesk.Domain.Customers.CustomerKind" Value="@kind">@Labels.Kind(kind)</MudSelectItem>
+                        }
+                    </MudSelect>
+                    <MudSelect T="Helpdesk.Domain.Customers.ServiceTier" @bind-Value="_newCustomer.ServiceTier" Label="Nivel de servicio" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-2">
+                        @foreach (var tier in Enum.GetValues<Helpdesk.Domain.Customers.ServiceTier>())
+                        {
+                            <MudSelectItem T="Helpdesk.Domain.Customers.ServiceTier" Value="@tier">@Labels.Tier(tier)</MudSelectItem>
+                        }
+                    </MudSelect>
+                    <MudTextField T="string" @bind-Value="_newCustomer.Email" Label="Correo (opcional)" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-2" />
+                    <MudTextField T="string" @bind-Value="_newCustomer.Phone" Label="Teléfono (opcional)" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-2" />
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" Disabled="@string.IsNullOrWhiteSpace(_newCustomer.DisplayName)" OnClick="CreateCustomerAsync">Crear cliente</MudButton>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+    </MudTabPanel>
+</MudTabs>
+
+@code {
+    private readonly Func<object, string, Task<IEnumerable<string>>> _userValidation = FormValidation.For(new Helpdesk.Contracts.Validation.CreateUserRequestValidator());
+    private List<UserDto> _users = [];
+    private List<TeamDto> _teams = [];
+    private List<CustomerDto> _customers = [];
+    private CreateUserRequest _newUser = new();
+    private IReadOnlyCollection<Guid> _newUserTeams = [];
+    private SaveCustomerRequest _newCustomer = new();
+    private MudForm? _userForm;
+    private string _userSearch = string.Empty;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _users = await Api.UsersAsync();
+            _teams = await Api.TeamsAsync();
+            _customers = [.. (await Api.CustomersAsync(null, pageSize: 100)).Items];
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Friendly, Severity.Error);
+        }
+    }
+
+    private bool FilterUser(UserDto user) =>
+        string.IsNullOrWhiteSpace(_userSearch)
+        || user.FullName.Contains(_userSearch, StringComparison.OrdinalIgnoreCase)
+        || user.Email.Contains(_userSearch, StringComparison.OrdinalIgnoreCase);
+
+    private async Task SetActiveAsync(UserDto user, bool active)
+    {
+        try
+        {
+            await Api.SetUserStatusAsync(user.Id, active);
+            Snackbar.Add(active ? $"{user.FullName} activado." : $"{user.FullName} desactivado: se cerraron sus sesiones.", Severity.Success);
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Friendly, Severity.Error);
+        }
+
+        await LoadAsync();
+    }
+
+    private async Task CreateUserAsync()
+    {
+        _newUser.TeamIds = _newUser.Role == "Customer" ? [] : [.. _newUserTeams];
+        if (_newUser.Role != "Customer")
+        {
+            _newUser.CustomerId = null;
+        }
+
+        await _userForm!.ValidateAsync();
+        if (!_userForm.IsValid)
+        {
+            return;
+        }
+
+        try
+        {
+            await Api.CreateUserAsync(_newUser);
+            Snackbar.Add("Usuario creado.", Severity.Success);
+            _newUser = new CreateUserRequest();
+            _newUserTeams = [];
+            await LoadAsync();
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Friendly, Severity.Error);
+        }
+    }
+
+    private async Task CreateCustomerAsync()
+    {
+        try
+        {
+            var created = await Api.CreateCustomerAsync(_newCustomer);
+            Snackbar.Add($"Cliente {created.Code} creado.", Severity.Success);
+            _newCustomer = new SaveCustomerRequest();
+            await LoadAsync();
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Friendly, Severity.Error);
+        }
+    }
+
+    private async Task AnonymizeAsync(CustomerDto customer)
+    {
+        var confirmed = await Dialogs.ShowMessageBoxAsync(
+            "Anonimizar cliente",
+            $"Se borrarán de forma irreversible los datos de contacto de {customer.DisplayName}, se desactivarán sus usuarios y se eliminarán sus adjuntos. Los tickets se conservan para estadística con el código {customer.Code}.",
+            yesText: "Anonimizar",
+            cancelText: "Cancelar");
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        try
+        {
+            await Api.AnonymizeCustomerAsync(customer.Id);
+            Snackbar.Add("Cliente anonimizado.", Severity.Success);
+            await LoadAsync();
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Friendly, Severity.Error);
+        }
+    }
+}

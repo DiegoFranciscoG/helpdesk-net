@@ -1,0 +1,26 @@
+@inject SessionService Session
+
+<MudNavMenu Class="pt-2" aria-label="Navegación principal">
+    <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">Inicio</MudNavLink>
+    <MudNavLink Href="tickets" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.ConfirmationNumber">@(Session.IsCustomer ? "Mis tickets" : "Tickets")</MudNavLink>
+    <MudNavLink Href="tickets/nuevo" Icon="@Icons.Material.Filled.AddCircle">Nuevo ticket</MudNavLink>
+    @if (Session.IsSupervisor)
+    {
+        <MudNavLink Href="reportes" Icon="@Icons.Material.Filled.Insights">Reportes</MudNavLink>
+    }
+
+    @if (Session.IsStaff)
+    {
+        <MudNavGroup Title="Configuración" Icon="@Icons.Material.Filled.Settings" Expanded="true">
+            <MudNavLink Href="admin/sla" Icon="@Icons.Material.Filled.Timer">SLA y feriados</MudNavLink>
+            @if (Session.IsAdmin)
+            {
+                <MudNavLink Href="admin/usuarios" Icon="@Icons.Material.Filled.ManageAccounts">Usuarios y clientes</MudNavLink>
+            }
+        </MudNavGroup>
+    }
+</MudNavMenu>
+
+<MudText Typo="Typo.caption" Class="pa-4 mud-text-secondary">
+    Calendario laboral de Ecuador · feriados 2026
+</MudText>

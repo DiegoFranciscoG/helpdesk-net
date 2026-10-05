@@ -1,0 +1,80 @@
+@inject HelpdeskApi Api
+@inject NavigationManager Navigation
+
+<MudStack Class="pa-4" Spacing="2">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+        <MudText Typo="Typo.h6" id="titulo-notificaciones">Notificaciones</MudText>
+        <MudButton Size="Size.Small" Variant="Variant.Text" Disabled="@(!_items.Any(n => !n.IsRead))" OnClick="MarkAllAsync">Marcar todas</MudButton>
+    </MudStack>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else if (_items.Count == 0)
+    {
+        <MudText Typo="Typo.body2" Class="mud-text-secondary">No tienes notificaciones.</MudText>
+    }
+    else
+    {
+        <MudList T="NotificationDto" Dense="true" aria-labelledby="titulo-notificaciones">
+            @foreach (var item in _items)
+            {
+                <MudListItem T="NotificationDto" OnClick="@(() => OpenAsync(item))" Icon="@Labels.NotificationIcon(item.Type)" IconColor="@Labels.NotificationColor(item.Type)">
+                    <MudText Typo="Typo.body2" Style="@(item.IsRead ? string.Empty : "font-weight:600")">@item.Title</MudText>
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">@item.Message</MudText>
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">@Labels.ShortDate(item.CreatedAt)</MudText>
+                </MudListItem>
+            }
+        </MudList>
+    }
+</MudStack>
+
+@code {
+    private List<NotificationDto> _items = [];
+    private bool _loading;
+
+    [Parameter]
+    public EventCallback<int> OnUnreadChanged { get; set; }
+
+    public async Task LoadAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+        try
+        {
+            _items = await Api.NotificationsAsync();
+        }
+        catch (ApiException)
+        {
+            _items = [];
+        }
+        finally
+        {
+            _loading = false;
+        }
+
+        await OnUnreadChanged.InvokeAsync(_items.Count(n => !n.IsRead));
+        StateHasChanged();
+    }
+
+    private async Task OpenAsync(NotificationDto item)
+    {
+        if (!item.IsRead)
+        {
+            await Api.MarkReadAsync(item.Id);
+            await LoadAsync();
+        }
+
+        if (item.TicketId is { } ticketId)
+        {
+            Navigation.NavigateTo($"tickets/{ticketId}");
+        }
+    }
+
+    private async Task MarkAllAsync()
+    {
+        await Api.MarkAllReadAsync();
+        await LoadAsync();
+    }
+}

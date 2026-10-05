@@ -1,0 +1,46 @@
+@inject IWebAssemblyHostEnvironment Env
+@inject IOptions<ApiOptions> ApiOptions
+
+@if (!Env.IsDevelopment())
+{
+    @* CSP para Blazor WebAssembly (guía de Microsoft): solo scripts propios + wasm-unsafe-eval y conexiones a la API configurada. *@
+    <HeadContent>
+        <meta http-equiv="Content-Security-Policy" content="@ContentSecurityPolicy" />
+    </HeadContent>
+}
+
+<CascadingAuthenticationState>
+    <Router AppAssembly="@typeof(App).Assembly">
+        <Found Context="routeData">
+            <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
+                <NotAuthorized>
+                    <RedirectToLogin />
+                </NotAuthorized>
+                <Authorizing>
+                    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+                </Authorizing>
+            </AuthorizeRouteView>
+            <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+        </Found>
+        <NotFound>
+            <PageTitle>No encontrado · helpdesk-net</PageTitle>
+            <LayoutView Layout="@typeof(MainLayout)">
+                <MudAlert Severity="Severity.Warning" Class="ma-4">La página no existe.</MudAlert>
+            </LayoutView>
+        </NotFound>
+    </Router>
+</CascadingAuthenticationState>
+
+@code {
+    private string ContentSecurityPolicy
+    {
+        get
+        {
+            var api = new Uri(ApiOptions.Value.BaseUrl);
+            var origin = api.GetLeftPart(UriPartial.Authority);
+            var socket = (api.Scheme == "https" ? "wss://" : "ws://") + api.Authority;
+            var upgrade = api.Scheme == "https" ? " upgrade-insecure-requests;" : string.Empty;
+            return $"default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' {origin} {socket}; object-src 'none'; base-uri 'self'; form-action 'self';{upgrade}";
+        }
+    }
+}
