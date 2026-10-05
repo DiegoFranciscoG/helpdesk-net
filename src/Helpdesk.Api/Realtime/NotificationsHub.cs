@@ -2,8 +2,10 @@ using Helpdesk.Api.Security;
 using Helpdesk.Application.Abstractions;
 using Helpdesk.Contracts.Notifications;
 using Helpdesk.Domain.Common;
+using Helpdesk.Infrastructure.Identity;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.IdentityModel.JsonWebTokens;
 
 namespace Helpdesk.Api.Realtime;
 
@@ -12,7 +14,7 @@ namespace Helpdesk.Api.Realtime;
 /// sus colas (agentes), "supervisors" (supervisión y administración) o su cliente (portal).
 /// </summary>
 [Authorize(Policy = Policies.User)]
-public sealed class NotificationsHub(ICurrentUser currentUser) : Hub
+public sealed class NotificationsHub(IUserDirectory users) : Hub
 {
     public const string Supervisors = "supervisors";
 
@@ -22,18 +24,25 @@ public sealed class NotificationsHub(ICurrentUser currentUser) : Hub
 
     public override async Task OnConnectedAsync()
     {
-        var access = await currentUser.GetAccessAsync(Context.ConnectionAborted);
-        if (access.SeesEverything)
+        // Se leen los claims de la conexión (no IHttpContextAccessor: con long polling o WebSockets no siempre existe).
+        var user = Context.User;
+        var role = Enum.TryParse<ActorRole>(user?.FindFirst(HelpdeskClaims.Role)?.Value, out var parsed) ? parsed : ActorRole.System;
+        var userId = Guid.TryParse(user?.FindFirst(JwtRegisteredClaimNames.Sub)?.Value, out var id) ? id : Guid.Empty;
+
+        if (role is ActorRole.Admin or ActorRole.Supervisor)
         {
             await Groups.AddToGroupAsync(Context.ConnectionId, Supervisors);
         }
 
-        foreach (var teamId in access.TeamIds)
+        if (role is ActorRole.Admin or ActorRole.Supervisor or ActorRole.Agent)
         {
-            await Groups.AddToGroupAsync(Context.ConnectionId, TeamGroup(teamId));
+            foreach (var teamId in await users.GetTeamIdsAsync(userId, Context.ConnectionAborted))
+            {
+                await Groups.AddToGroupAsync(Context.ConnectionId, TeamGroup(teamId));
+            }
         }
 
-        if (access.Role == ActorRole.Customer && access.CustomerId is { } customerId)
+        if (role == ActorRole.Customer && Guid.TryParse(user?.FindFirst(HelpdeskClaims.CustomerId)?.Value, out var customerId))
         {
             await Groups.AddToGroupAsync(Context.ConnectionId, CustomerGroup(customerId));
         }

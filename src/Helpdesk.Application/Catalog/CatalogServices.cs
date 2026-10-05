@@ -35,7 +35,8 @@ public sealed class CatalogService(ICatalogRepository catalog, IUserDirectory us
     {
         ArgumentNullException.ThrowIfNull(request);
         var team = await catalog.GetTeamAsync(teamId, cancellationToken) ?? throw new NotFoundException("Cola");
-        foreach (var member in request.Members)
+        // Solo se valida a quien se agrega: un miembro existente desactivado no bloquea la edición de la cola.
+        foreach (var member in request.Members.Where(m => !team.HasMember(m.UserId)))
         {
             if (await users.GetActiveStaffAsync(member.UserId, cancellationToken) is null)
             {

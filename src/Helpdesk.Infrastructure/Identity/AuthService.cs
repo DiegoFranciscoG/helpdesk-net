@@ -54,7 +54,10 @@ internal sealed partial class AuthService(
         await userManager.ResetAccessFailedCountAsync(user);
         user.LastLoginAt = clock.GetUtcNow();
         await userManager.UpdateAsync(user);
-        return await IssueAsync(user, Guid.CreateVersion7(), clock.GetUtcNow().AddHours(options.Value.RefreshTokenHours), cancellationToken);
+        // Expiración absoluta truncada a segundos: PostgreSQL guarda microsegundos y el valor debe ser idéntico en cada rotación.
+        var now = clock.GetUtcNow();
+        var familyExpiresAt = new DateTimeOffset(now.Year, now.Month, now.Day, now.Hour, now.Minute, now.Second, TimeSpan.Zero).AddHours(options.Value.RefreshTokenHours);
+        return await IssueAsync(user, Guid.CreateVersion7(), familyExpiresAt, cancellationToken);
     }
 
     public async Task<TokenResponse> RefreshAsync(string refreshToken, CancellationToken cancellationToken)

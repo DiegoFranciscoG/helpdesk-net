@@ -112,3 +112,41 @@ internal static class HealthCheckCommand
         }
     }
 }
+
+/// <summary>Acepta enumeraciones en snake_case también en query string y rutas (<c>?sort=due_date</c>), igual que en JSON.</summary>
+internal sealed class SnakeCaseEnumModelBinderProvider : Microsoft.AspNetCore.Mvc.ModelBinding.IModelBinderProvider
+{
+    public Microsoft.AspNetCore.Mvc.ModelBinding.IModelBinder? GetBinder(Microsoft.AspNetCore.Mvc.ModelBinding.ModelBinderProviderContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        var type = Nullable.GetUnderlyingType(context.Metadata.ModelType) ?? context.Metadata.ModelType;
+        return type.IsEnum && context.BindingInfo.BindingSource != Microsoft.AspNetCore.Mvc.ModelBinding.BindingSource.Body
+            ? new SnakeCaseEnumModelBinder(type)
+            : null;
+    }
+
+    private sealed class SnakeCaseEnumModelBinder(Type enumType) : Microsoft.AspNetCore.Mvc.ModelBinding.IModelBinder
+    {
+        public Task BindModelAsync(Microsoft.AspNetCore.Mvc.ModelBinding.ModelBindingContext bindingContext)
+        {
+            ArgumentNullException.ThrowIfNull(bindingContext);
+            var value = bindingContext.ValueProvider.GetValue(bindingContext.ModelName).FirstValue;
+            if (string.IsNullOrEmpty(value))
+            {
+                return Task.CompletedTask;
+            }
+
+            var normalized = value.Replace("_", string.Empty, StringComparison.Ordinal);
+            if (!normalized.All(char.IsDigit) && Enum.TryParse(enumType, normalized, ignoreCase: true, out var parsed) && Enum.IsDefined(enumType, parsed))
+            {
+                bindingContext.Result = Microsoft.AspNetCore.Mvc.ModelBinding.ModelBindingResult.Success(parsed);
+            }
+            else
+            {
+                bindingContext.ModelState.TryAddModelError(bindingContext.ModelName, $"Valor no válido: '{value}'.");
+            }
+
+            return Task.CompletedTask;
+        }
+    }
+}

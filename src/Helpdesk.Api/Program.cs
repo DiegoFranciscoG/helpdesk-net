@@ -87,15 +87,21 @@ builder.Services.AddCors(cors => cors.AddPolicy("frontend", policy => policy
     .WithHeaders("Authorization", "Content-Type", "If-Match", "X-Requested-With", "X-SignalR-User-Agent")
     .WithExposedHeaders("ETag", "Retry-After", "Content-Disposition")));
 
-builder.Services.AddSignalR(hub =>
-{
-    hub.MaximumReceiveMessageSize = 32 * 1024;
-    hub.EnableDetailedErrors = false;
-});
+builder.Services
+    .AddSignalR(hub =>
+    {
+        hub.MaximumReceiveMessageSize = 32 * 1024;
+        hub.EnableDetailedErrors = false;
+    })
+    .AddJsonProtocol(json => ConfigureJson(json.PayloadSerializerOptions));
 builder.Services.AddSingleton<IUserIdProvider, SubjectUserIdProvider>();
 
 builder.Services
-    .AddControllers(mvc => mvc.Filters.Add<ValidationFilter>())
+    .AddControllers(mvc =>
+    {
+        mvc.Filters.Add<ValidationFilter>();
+        mvc.ModelBinderProviders.Insert(0, new SnakeCaseEnumModelBinderProvider());
+    })
     .AddJsonOptions(json => ConfigureJson(json.JsonSerializerOptions));
 builder.Services.ConfigureHttpJsonOptions(json => ConfigureJson(json.SerializerOptions));
 builder.Services.AddProblemDetails(problem => problem.CustomizeProblemDetails = context =>
@@ -127,6 +133,9 @@ if (app.Configuration.GetValue<bool>("ReverseProxy:TrustForwardedHeaders"))
     app.UseForwardedHeaders();
 }
 
+// Se registra fuera del manejador de errores para ver el estado final (401, 404…) y no la excepción interna.
+// RequestPath no incluye el query string: el access_token de SignalR nunca llega a los logs.
+app.UseSerilogRequestLogging(logging => logging.MessageTemplate = "HTTP {RequestMethod} {RequestPath} → {StatusCode} en {Elapsed:0.0} ms");
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 app.UseMiddleware<SecurityHeadersMiddleware>();
@@ -135,8 +144,6 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
-// RequestPath no incluye el query string: el access_token de SignalR nunca llega a los logs.
-app.UseSerilogRequestLogging(logging => logging.MessageTemplate = "HTTP {RequestMethod} {RequestPath} → {StatusCode} en {Elapsed:0.0} ms");
 app.UseCors("frontend");
 app.UseAuthentication();
 app.UseRateLimiter();

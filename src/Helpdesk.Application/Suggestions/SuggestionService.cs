@@ -69,8 +69,9 @@ public sealed partial class SuggestionService(
 
         var text = $"{ticket.Title}\n{ticket.Description}";
         var result = await classifier.ClassifyAsync(text[..Math.Min(text.Length, 5000)], ticket.Channel, ticket.DisplayNumber, cancellationToken);
-        if (result is null)
+        if (result is null || result.Suggestion is { CategoryCode: null, TeamCode: null, Urgency: null })
         {
+            // Sin respuesta o sin ningún valor utilizable (la respuesta del clasificador se valida como no confiable).
             return false;
         }
 

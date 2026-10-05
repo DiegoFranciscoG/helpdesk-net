@@ -30,7 +30,7 @@ internal sealed class CommonPasswordValidator : IPasswordValidator<AppUser>
             errors.Add(new IdentityError { Code = "PasswordTooLong", Description = $"La contraseña admite máximo {PasswordRules.MaxLength} caracteres." });
         }
 
-        if (Blocklist.Contains(value) || value.Distinct().Count() < 4 || IsSequential(value))
+        if (Blocklist.Contains(value) || value.Distinct().Count() < 4 || IsSequential(value) || IsRepeatedPattern(value))
         {
             errors.Add(new IdentityError { Code = "PasswordTooCommon", Description = "La contraseña es demasiado común o predecible." });
         }
@@ -46,6 +46,7 @@ internal sealed class CommonPasswordValidator : IPasswordValidator<AppUser>
         return Task.FromResult(errors.Count == 0 ? IdentityResult.Success : IdentityResult.Failed([.. errors]));
     }
 
+    /// <summary>Secuencias como "abcdef…" o "1234567890123…" (los dígitos se consideran cíclicos: 9 → 0).</summary>
     private static bool IsSequential(string value)
     {
         if (value.Length < 2)
@@ -53,15 +54,17 @@ internal sealed class CommonPasswordValidator : IPasswordValidator<AppUser>
             return false;
         }
 
-        var step = value[1] - value[0];
-        if (Math.Abs(step) != 1)
+        var allDigits = value.All(char.IsAsciiDigit);
+        var step = allDigits ? Mod10(value[1] - value[0]) : value[1] - value[0];
+        if (allDigits ? step is not (1 or 9) : Math.Abs(step) != 1)
         {
             return false;
         }
 
         for (var i = 2; i < value.Length; i++)
         {
-            if (value[i] - value[i - 1] != step)
+            var current = allDigits ? Mod10(value[i] - value[i - 1]) : value[i] - value[i - 1];
+            if (current != step)
             {
                 return false;
             }
@@ -69,6 +72,28 @@ internal sealed class CommonPasswordValidator : IPasswordValidator<AppUser>
 
         return true;
     }
+
+    /// <summary>Patrones cortos repetidos ("abcabcabc…", "12121212…").</summary>
+    private static bool IsRepeatedPattern(string value)
+    {
+        for (var period = 1; period <= Math.Min(6, value.Length / 3); period++)
+        {
+            var repeated = true;
+            for (var i = period; i < value.Length && repeated; i++)
+            {
+                repeated = value[i] == value[i % period];
+            }
+
+            if (repeated)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static int Mod10(int value) => ((value % 10) + 10) % 10;
 }
 
 /// <summary>Mensajes de Identity en español.</summary>
