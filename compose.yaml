@@ -42,12 +42,14 @@ services:
       Database__SeedDemoData: "true"
       Seed__DemoPassword: ${HELPDESK_DEMO_PASSWORD:?Define HELPDESK_DEMO_PASSWORD en .env (contraseña de los usuarios demo)}
       Cors__AllowedOrigins: http://localhost:5173
-      # Opcionales: cliente de integración (JWT para nlp-tickets-es) y clasificador de P27.
+      # Opcionales: cliente de integración (JWT para nlp-tickets-es) y clasificador de P27. Los secretos opcionales
+      # no tienen valor por defecto: si faltan llegan vacíos y la integración queda desactivada (copia todas las
+      # claves de .env.example para evitar el aviso "variable is not set").
       Integration__ClientId: nlp-tickets-es
-      Integration__ClientSecret: ${HELPDESK_INTEGRATION_CLIENT_SECRET:-}
+      Integration__ClientSecret: ${HELPDESK_INTEGRATION_CLIENT_SECRET}
       Nlp__BaseUrl: ${HELPDESK_NLP_URL:-}
-      Nlp__ApiKey: ${HELPDESK_NLP_API_KEY:-}
-      Nlp__ReviewerApiKey: ${HELPDESK_NLP_REVIEWER_API_KEY:-}
+      Nlp__ApiKey: ${HELPDESK_NLP_API_KEY}
+      Nlp__ReviewerApiKey: ${HELPDESK_NLP_REVIEWER_API_KEY}
       # 5 logins y 30 renovaciones de sesión por minuto e IP; solo se suben para las pruebas e2e (muchos navegadores, una IP).
       RateLimiting__AuthPerMinute: ${HELPDESK_AUTH_RATE_LIMIT:-5}
       RateLimiting__RefreshPerMinute: ${HELPDESK_REFRESH_RATE_LIMIT:-30}
