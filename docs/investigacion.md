@@ -78,10 +78,12 @@ Fecha de consulta de todas las fuentes: **2026-10-04**. Cuando la fuente era un 
 
 | # | Fuente | URL | Consultada | Qué se tomó de aquí |
 |---|---|---|---|---|
-| 40 | Render — *Deploy for Free* | https://render.com/docs/free | 2026-10-04 | Web services gratis: se duermen tras **15 min** sin tráfico (HTTP o mensajes WebSocket), **750 h/mes por workspace**, **sistema de archivos efímero sin discos persistentes**, una sola instancia. **Static sites gratis** y fuera del cupo de horas. Postgres gratis: 1 GB y **expira a los 30 días**. |
+| 40 | Render — *Deploy for Free* | https://render.com/docs/free | 2026-10-04 | Web services gratis: se duermen tras **15 min** sin tráfico (HTTP o mensajes WebSocket), **750 h/mes por workspace**, **sistema de archivos efímero sin discos persistentes**, una sola instancia. **Static sites gratis** y fuera del cupo de horas. Postgres gratis: 1 GB y **expira a los 30 días**. La documentación contempla cuentas **sin método de pago** (si se excede el ancho de banda gratis, suspende los servicios en vez de cobrar): no exige tarjeta. Reconsulta: 2026-10-05. |
 | 41 | Render — *Free web services now remain active while receiving WebSocket messages* | https://render.com/changelog/free-web-services-now-remain-active-while-receiving-websocket-messages | 2026-10-04 | SignalR por WebSocket mantiene despierta la API mientras haya mensajes. |
 | 42 | Neon — *Plans* y *Pricing* | https://neon.com/pricing | 2026-10-04 | Free: **1 GB por proyecto** (20 GB por cuenta), **100 CU-h por proyecto**, hasta 100 proyectos, *scale to zero* a los 5 min, **sin tarjeta**. (Las reglas del portafolio decían 0,5 GB: el límite subió.) |
 | 43 | Neon — *Postgres version support policy* | https://neon.com/docs/postgresql/postgres-version-policy | 2026-10-04 | Soporta Postgres **14 a 18**: la misma versión mayor (18) en local y en Neon. |
+| 46 | GitHub Docs — *GitHub Pages limits* | https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits | 2026-10-05 | Sitio publicado de **1 GB** como máximo, ancho de banda *soft* de **100 GB/mes**, **10 builds/hora** (*soft*) y despliegues que expiran a los **10 min**. El front WebAssembly publicado pesa ~22 MB con sus versiones comprimidas. |
+| 47 | Neon — *Connection pooling* | https://neon.com/docs/connect/connection-pooling | 2026-10-05 | El *pooler* usa PgBouncer en modo transacción: no admite `SET` de sesión ni bloqueos *advisory* de sesión. Neon pide **conexión directa para migraciones**; la API (una instancia que migra al arrancar) usa el endpoint directo. |
 
 ## 8. Integración con P27 (nlp-tickets-es)
 
