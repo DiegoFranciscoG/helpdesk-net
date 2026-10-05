@@ -1,0 +1,87 @@
+# Stack local completo: PostgreSQL + API + front con datos demo ficticios.
+#   cp .env.example .env   # y completa los valores (ver comentarios del archivo)
+#   docker compose up --build
+# Front: http://localhost:5173 · API y documentación: http://localhost:5080/docs
+# Los secretos no tienen valor por defecto: si falta uno, compose se niega a arrancar con un mensaje claro.
+name: helpdesk-net
+
+services:
+  db:
+    image: postgres:18.6-alpine3.24
+    environment:
+      POSTGRES_DB: helpdesk
+      POSTGRES_USER: helpdesk
+      POSTGRES_PASSWORD: ${HELPDESK_DB_PASSWORD:?Define HELPDESK_DB_PASSWORD en .env}
+    volumes:
+      # Desde PostgreSQL 18 la imagen guarda los datos en /var/lib/postgresql/<versión>/docker.
+      - db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U helpdesk -d helpdesk"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: src/Helpdesk.Api/Dockerfile
+    image: helpdesk-net-api:local
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:5080:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Helpdesk: "Host=db;Port=5432;Database=helpdesk;Username=helpdesk;Password=${HELPDESK_DB_PASSWORD:?Define HELPDESK_DB_PASSWORD en .env}"
+      Jwt__SigningKey: ${HELPDESK_JWT_SIGNING_KEY:?Define HELPDESK_JWT_SIGNING_KEY en .env (32 bytes aleatorios o más)}
+      Database__ApplyMigrationsOnStartup: "true"
+      Database__SeedDemoData: "true"
+      Seed__DemoPassword: ${HELPDESK_DEMO_PASSWORD:?Define HELPDESK_DEMO_PASSWORD en .env (contraseña de los usuarios demo)}
+      Cors__AllowedOrigins: http://localhost:5173
+      # Opcionales: cliente de integración (JWT para nlp-tickets-es) y clasificador de P27.
+      Integration__ClientId: nlp-tickets-es
+      Integration__ClientSecret: ${HELPDESK_INTEGRATION_CLIENT_SECRET:-}
+      Nlp__BaseUrl: ${HELPDESK_NLP_URL:-}
+      Nlp__ApiKey: ${HELPDESK_NLP_API_KEY:-}
+      Nlp__ReviewerApiKey: ${HELPDESK_NLP_REVIEWER_API_KEY:-}
+      # 5 intentos de login por minuto e IP; solo se sube para correr las pruebas e2e.
+      RateLimiting__AuthPerMinute: ${HELPDESK_AUTH_RATE_LIMIT:-5}
+    volumes:
+      - attachments:/data/attachments
+    extra_hosts:
+      # Permite llegar a nlp-tickets-es levantado en el mismo equipo (http://host.docker.internal:8000).
+      - "host.docker.internal:host-gateway"
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: src/Helpdesk.Web/Dockerfile
+    image: helpdesk-net-web:local
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:5173:8080"
+    environment:
+      HELPDESK_API_URL: http://localhost:5080
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: unless-stopped
+
+volumes:
+  db-data:
+  attachments:
