@@ -51,11 +51,14 @@ internal sealed partial class AuthService(
             throw new AuthenticationFailedException();
         }
 
-        await userManager.ResetAccessFailedCountAsync(user);
-        user.LastLoginAt = clock.GetUtcNow();
-        await userManager.UpdateAsync(user);
-        // Expiración absoluta truncada a segundos: PostgreSQL guarda microsegundos y el valor debe ser idéntico en cada rotación.
+        // Sentencia atómica en vez de UserManager.UpdateAsync: dos inicios de sesión simultáneos del mismo usuario
+        // (dos pestañas) no compiten por el ConcurrencyStamp de Identity.
         var now = clock.GetUtcNow();
+        await db.Users
+            .Where(u => u.Id == user.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(u => u.AccessFailedCount, 0).SetProperty(u => u.LastLoginAt, now), cancellationToken);
+
+        // Expiración absoluta truncada a segundos: PostgreSQL guarda microsegundos y el valor debe ser idéntico en cada rotación.
         var familyExpiresAt = new DateTimeOffset(now.Year, now.Month, now.Day, now.Hour, now.Minute, now.Second, TimeSpan.Zero).AddHours(options.Value.RefreshTokenHours);
         return await IssueAsync(user, Guid.CreateVersion7(), familyExpiresAt, cancellationToken);
     }
@@ -129,9 +132,12 @@ internal sealed partial class AuthService(
             throw new BusinessRuleException("privacy_version", "Versión del aviso de privacidad no vigente.");
         }
 
-        user.PrivacyNoticeVersion = version;
-        user.PrivacyNoticeAcceptedAt = clock.GetUtcNow();
-        await userManager.UpdateAsync(user);
+        // Idempotente y atómico: aceptar desde dos pestañas a la vez no produce un conflicto de concurrencia.
+        var now = clock.GetUtcNow();
+        await db.Users
+            .Where(u => u.Id == user.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(u => u.PrivacyNoticeVersion, version).SetProperty(u => u.PrivacyNoticeAcceptedAt, now), cancellationToken);
+        await db.Entry(user).ReloadAsync(cancellationToken);
         return await ToDtoAsync(user, cancellationToken);
     }
 

@@ -58,6 +58,26 @@ public sealed class AuthAndSecurityTests(HelpdeskFixture fixture)
     }
 
     [Fact]
+    public async Task Concurrent_logins_and_consents_of_the_same_user_never_fail()
+    {
+        // Dos pestañas a la vez no deben competir por el ConcurrencyStamp de Identity (antes: 500 intermitente).
+        var (email, password) = await CreateAgentAsync();
+        var logins = await Task.WhenAll(Enumerable.Range(0, 6).Select(_ =>
+            fixture.Factory.CreateClient().PostAsJsonAsync("/api/v1/auth/login", new LoginRequest { Email = email, Password = password })));
+
+        var customer = await fixture.ClientAsAsync("luis.cardenas@correo.example");
+        var consents = await Task.WhenAll(Enumerable.Range(0, 4).Select(_ =>
+            customer.PostAsJsonAsync("/api/v1/auth/privacy-consent", new PrivacyConsentRequest { Version = Contracts.Common.PrivacyNotice.CurrentVersion })));
+
+        logins.Should().AllSatisfy(r => r.StatusCode.Should().Be(HttpStatusCode.OK));
+        consents.Should().AllSatisfy(r => r.StatusCode.Should().Be(HttpStatusCode.OK));
+        foreach (var response in logins.Concat(consents))
+        {
+            response.Dispose();
+        }
+    }
+
+    [Fact]
     public async Task Logout_revokes_the_session()
     {
         var (email, password) = await CreateAgentAsync();
