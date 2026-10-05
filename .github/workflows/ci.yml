@@ -1,0 +1,132 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  secrets:
+    name: Escaneo de secretos (gitleaks)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Instalar gitleaks 8.30.1 (SHA-256 verificado)
+        run: |
+          curl -fsSL -o gl.tgz https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  gl.tgz" | sha256sum -c -
+          tar -xzf gl.tgz gitleaks
+      - name: Escanear historial completo
+        run: ./gitleaks git . -c .gitleaks.toml --redact --verbose --exit-code 1
+
+  build-test:
+    name: Build, formato, tests y cobertura
+    runs-on: ubuntu-24.04
+    needs: secrets
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - name: Restaurar herramientas y paquetes
+        run: |
+          dotnet tool restore
+          dotnet restore Helpdesk.slnx
+      - name: Formato (dotnet format)
+        run: dotnet format Helpdesk.slnx --verify-no-changes --no-restore
+      - name: Build (warnings como errores, analizadores activos)
+        run: dotnet build Helpdesk.slnx -c Release --no-restore
+      - name: Migraciones sincronizadas con el modelo
+        run: dotnet ef migrations has-pending-model-changes -p src/Helpdesk.Infrastructure -s src/Helpdesk.Infrastructure --configuration Release --no-build
+      - name: Tests unitarios, de componentes e integración (Testcontainers + WireMock)
+        # Las pruebas e2e se omiten aquí (no hay stack levantado); corren en el job docker-e2e.
+        run: >-
+          dotnet test --solution Helpdesk.slnx -c Release --no-build --
+          --coverlet --coverlet-output-format cobertura
+          --coverlet-include "[Helpdesk.*]*" --coverlet-exclude "[Helpdesk.*Tests]*"
+          --coverlet-exclude-by-file "**/Migrations/*.cs"
+          --results-directory "${{ github.workspace }}/artifacts/coverage"
+      - name: Cobertura de la lógica de negocio (umbral 70 %)
+        run: |
+          dotnet reportgenerator -reports:"artifacts/coverage/*.cobertura*.xml" -targetdir:artifacts/coverage/report \
+            -reporttypes:"TextSummary;MarkdownSummaryGithub" -assemblyfilters:"+Helpdesk.Domain;+Helpdesk.Application"
+          cat artifacts/coverage/report/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY"
+          python3 scripts/check-coverage.py artifacts/coverage/report/Summary.txt 70
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: coverage
+          path: artifacts/coverage/report
+          retention-days: 14
+
+  docker-e2e:
+    name: Imágenes, Trivy y e2e sobre docker compose
+    runs-on: ubuntu-24.04
+    needs: build-test
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: hadolint 2.15.1 (SHA-256 verificado)
+        run: |
+          curl -fsSLo hadolint https://github.com/hadolint/hadolint/releases/download/v2.15.1/hadolint-linux-x86_64
+          echo "c7187db94eeeeca956519a6af171adc31453941a1e777961f6e680f697c8c507  hadolint" | sha256sum -c -
+          chmod +x hadolint
+          ./hadolint --failure-threshold warning src/Helpdesk.Api/Dockerfile src/Helpdesk.Web/Dockerfile
+      - name: Secretos efímeros para esta corrida (aleatorios, nunca se guardan)
+        run: |
+          demo_password="$(openssl rand -hex 20)"
+          echo "::add-mask::$demo_password"
+          {
+            echo "HELPDESK_DB_PASSWORD=$(openssl rand -hex 24)"
+            echo "HELPDESK_JWT_SIGNING_KEY=$(openssl rand -hex 48)"
+            echo "HELPDESK_DEMO_PASSWORD=$demo_password"
+            echo "HELPDESK_INTEGRATION_CLIENT_SECRET=$(openssl rand -hex 24)"
+            echo "HELPDESK_AUTH_RATE_LIMIT=60"
+          } > .env
+          echo "HELPDESK_E2E_PASSWORD=$demo_password" >> "$GITHUB_ENV"
+      - name: docker compose up --build (API, front y PostgreSQL con datos demo)
+        run: docker compose up -d --build --wait --wait-timeout 300
+      - name: Trivy (imagen oficial fijada) sobre las dos imágenes
+        run: |
+          for image in helpdesk-net-api:local helpdesk-net-web:local; do
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.74.0 \
+              image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --no-progress --exit-code 1 "$image"
+          done
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - name: Playwright (Chromium) para las pruebas e2e
+        run: |
+          dotnet build tests/Helpdesk.E2ETests -c Release
+          pwsh tests/Helpdesk.E2ETests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
+      - name: Pruebas e2e contra el stack de producción local
+        env:
+          HELPDESK_E2E_WEB_URL: http://localhost:5173
+          HELPDESK_E2E_SCREENSHOTS: ${{ github.workspace }}/artifacts/e2e
+        run: dotnet test --project tests/Helpdesk.E2ETests -c Release --no-build
+      - name: Logs de los contenedores si algo falló
+        if: failure()
+        run: docker compose logs --no-color > artifacts/compose.log || true
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: e2e
+          path: artifacts
+          retention-days: 14
+          if-no-files-found: ignore
+      - name: Apagar el stack
+        if: always()
+        run: docker compose down -v

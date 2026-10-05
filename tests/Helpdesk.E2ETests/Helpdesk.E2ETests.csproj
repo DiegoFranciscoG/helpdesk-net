@@ -7,6 +7,8 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="xunit.v3" />
+    <!-- Acepta las mismas opciones de cobertura que el resto: CI las pasa a toda la solución. -->
+    <PackageReference Include="coverlet.MTP" />
     <PackageReference Include="AwesomeAssertions" />
     <PackageReference Include="Microsoft.Playwright" />
   </ItemGroup>
