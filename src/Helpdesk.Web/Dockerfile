@@ -23,4 +23,4 @@ COPY --chmod=0755 deploy/nginx/05-helpdesk-env.envsh /docker-entrypoint.d/05-hel
 COPY deploy/nginx/default.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /out/wwwroot /usr/share/nginx/html
 EXPOSE 8080
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD wget -q --spider http://127.0.0.1:8080/healthz || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD ["wget", "-q", "--spider", "http://127.0.0.1:8080/healthz"]
