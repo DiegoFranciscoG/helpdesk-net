@@ -1,6 +1,7 @@
 using Helpdesk.Application.Sla;
 using Helpdesk.Domain.Common;
 using Helpdesk.Domain.Customers;
+using Helpdesk.Domain.Sla;
 using Helpdesk.Domain.Tickets;
 using Helpdesk.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
@@ -103,6 +104,33 @@ public sealed partial class DemoDataSeeder(
         "Gracias, quedo atento.",
     ];
 
+    /// <summary>
+    /// Bandeja abierta "en vivo": tickets ubicados respecto de la hora de arranque para que el tablero muestre
+    /// casos en riesgo, incumplidos, en pausa y pendientes de confirmación. La edad es un porcentaje del objetivo
+    /// de SLA (primera respuesta o resolución), así sigue siendo coherente si cambian las reglas.
+    /// </summary>
+    private static readonly (string Title, int Customer, BacklogStage Stage, bool OfResolution, int AgePercent)[] LiveBacklog =
+    [
+        ("Consumos que no reconozco", 2, BacklogStage.New, false, 85),
+        ("Perdí mi celular con la app instalada", 6, BacklogStage.InProgress, true, 85),
+        ("Error al iniciar sesión en la app", 7, BacklogStage.InProgress, true, 125),
+        ("El cajero no entregó el dinero", 1, BacklogStage.New, false, 150),
+        ("Transferencia no llega al destinatario", 3, BacklogStage.OnHold, true, 40),
+        ("Cobro duplicado en un comercio", 5, BacklogStage.Assigned, true, 82),
+        ("Mi tarjeta de débito no llega", 0, BacklogStage.New, false, 10),
+        ("Actualizar datos de contacto", 2, BacklogStage.Assigned, true, 30),
+        ("Cobro de comisión que no entiendo", 0, BacklogStage.Resolved, true, 70),
+    ];
+
+    private enum BacklogStage
+    {
+        New,
+        Assigned,
+        InProgress,
+        OnHold,
+        Resolved,
+    }
+
     private static readonly Dictionary<string, string> Resolutions = new()
     {
         ["cards"] = "Se gestionó la reposición y se confirmó la entrega de la tarjeta.",
@@ -190,7 +218,76 @@ public sealed partial class DemoDataSeeder(
             await db.SaveChangesAsync(cancellationToken);
         }
 
-        LogSeeded(logger, TicketCount, customers.Count);
+        foreach (var item in LiveBacklog)
+        {
+            var template = Templates.First(t => t.Title == item.Title);
+            var (customer, customerUserId) = customers[item.Customer];
+            var category = categories.First(c => c.Code == template.Category);
+            var team = teams.First(t => t.Id == category.DefaultTeamId);
+            var agentId = PickAgent(team, random) ?? staffIds[$"agente@{DemoDomain}"];
+            var terms = await sla.SelectAsync(PriorityMatrix.Calculate(template.Impact, template.Urgency), customer.ServiceTier, cancellationToken);
+            var target = item.OfResolution ? terms.ResolutionMinutes : terms.FirstResponseMinutes;
+            var createdAt = SlaMinutesAgo(terms.Calendar, now, target * item.AgePercent / 100);
+
+            // Sin aviso de privacidad aceptado, el ticket de la clienta demo lo registra un agente por teléfono.
+            var byPortal = item.Customer != 0;
+            var ticket = Ticket.Open(
+                new NewTicket(template.Title, template.Description, byPortal ? TicketChannel.Portal : TicketChannel.Phone, template.Impact, template.Urgency, category.Id, team.Id, customer.Id, byPortal ? customerUserId : agentId),
+                terms,
+                createdAt);
+            await AdvanceAsync(ticket, item.Stage, terms, template.Category, agentId, supervisor, now, cancellationToken);
+            ticket.ClearDomainEvents();
+            db.Tickets.Add(ticket);
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
+        LogSeeded(logger, TicketCount + LiveBacklog.Length, customers.Count);
+    }
+
+    /// <summary>Lleva un ticket de la bandeja en vivo hasta su etapa, con hitos proporcionales a su antigüedad.</summary>
+    private async Task AdvanceAsync(Ticket ticket, BacklogStage stage, SlaTerms terms, string categoryCode, Guid agentId, Actor supervisor, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var age = now - ticket.CreatedAt;
+        DateTimeOffset At(double fraction) => ticket.CreatedAt + (age * fraction);
+        var agent = new Actor(agentId, ActorRole.Agent);
+
+        if (stage == BacklogStage.New)
+        {
+            return;
+        }
+
+        ticket.Assign(agentId, supervisor, At(0.03));
+        if (stage == BacklogStage.Assigned)
+        {
+            return;
+        }
+
+        ticket.Start(agent, terms, At(0.06));
+        ticket.AddComment(agentId, ActorRole.Agent, StaffReplies[0], isInternal: false, terms, At(0.08));
+        switch (stage)
+        {
+            case BacklogStage.OnHold:
+                ticket.Hold(HoldReasons[0], agent, At(0.5));
+                break;
+            case BacklogStage.Resolved:
+                var resolvedAt = At(0.9);
+                ticket.Resolve(Resolutions[categoryCode], agent, terms, await sla.AutoCloseAtAsync(resolvedAt, cancellationToken), resolvedAt);
+                break;
+            default:
+                break;
+        }
+    }
+
+    /// <summary>Instante en que habían transcurrido <paramref name="minutes"/> minutos de SLA hasta ahora (hábiles o 24×7 según el calendario).</summary>
+    private static DateTimeOffset SlaMinutesAgo(ISlaCalendar calendar, DateTimeOffset now, int minutes)
+    {
+        var candidate = now;
+        while (calendar.BusinessMinutesBetween(candidate, now) < minutes)
+        {
+            candidate = candidate.AddMinutes(-5);
+        }
+
+        return candidate;
     }
 
     private async Task SimulateAsync(
@@ -204,6 +301,8 @@ public sealed partial class DemoDataSeeder(
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
+        // Las críticas tienen guardia 24×7: se toman y responden en minutos.
+        var critical = ticket.Priority == Priority.Critical;
         var fast = ticket.Priority <= Priority.High;
         var t = ticket.CreatedAt;
 
@@ -214,7 +313,7 @@ public sealed partial class DemoDataSeeder(
         }
 
         var agentId = PickAgent(team, random);
-        t = t.AddMinutes(fast ? random.Next(3, 40) : random.Next(10, 240));
+        t = t.AddMinutes(critical ? random.Next(2, 15) : fast ? random.Next(3, 40) : random.Next(10, 240));
         if (agentId is null || t > now)
         {
             return;
@@ -223,7 +322,7 @@ public sealed partial class DemoDataSeeder(
         ticket.Assign(agentId.Value, supervisor, t);
         var agent = new Actor(agentId, ActorRole.Agent);
 
-        t = t.AddMinutes(fast ? random.Next(2, 50) : random.Next(15, 420));
+        t = t.AddMinutes(critical ? random.Next(1, 18) : fast ? random.Next(2, 50) : random.Next(15, 420));
         if (t > now)
         {
             return;
@@ -261,7 +360,7 @@ public sealed partial class DemoDataSeeder(
             ticket.AddComment(agentId.Value, ActorRole.Agent, "Se escaló la validación al proveedor; seguimiento interno.", isInternal: true, terms, t.AddMinutes(5));
         }
 
-        t = t.AddMinutes(fast ? random.Next(30, 600) : random.Next(120, 4_000));
+        t = t.AddMinutes(critical ? random.Next(30, 260) : fast ? random.Next(30, 600) : random.Next(120, 4_000));
         if (t > now)
         {
             return;
