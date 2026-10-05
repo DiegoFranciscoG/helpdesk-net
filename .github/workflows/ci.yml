@@ -96,6 +96,8 @@ jobs:
             echo "HELPDESK_INTEGRATION_CLIENT_SECRET=$(openssl rand -hex 24)"
             echo "HELPDESK_AUTH_RATE_LIMIT=60"
             echo "HELPDESK_REFRESH_RATE_LIMIT=300"
+            echo "HELPDESK_NLP_API_KEY="
+            echo "HELPDESK_NLP_REVIEWER_API_KEY="
           } > .env
           echo "HELPDESK_E2E_PASSWORD=$demo_password" >> "$GITHUB_ENV"
       - name: docker compose up --build (API, front y PostgreSQL con datos demo)
