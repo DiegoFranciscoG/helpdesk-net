@@ -156,9 +156,13 @@ app.MapHealthChecks("/health/ready", new() { Predicate = check => check.Tags.Con
 if (app.Configuration.GetValue("OpenApi:Enabled", true))
 {
     app.MapOpenApi("/openapi/{documentName}.json").AllowAnonymous();
+    // Sin asistente de IA, servidor MCP ni barra de desarrollo de Scalar: la documentación no envía la API a terceros.
     app.MapScalarApiReference("/docs", scalar => scalar
         .WithTitle("helpdesk-net API")
-        .WithOpenApiRoutePattern("/openapi/{documentName}.json")).AllowAnonymous();
+        .WithOpenApiRoutePattern("/openapi/{documentName}.json")
+        .DisableAgent()
+        .DisableMcp()
+        .HideDeveloperTools()).AllowAnonymous();
 }
 
 await app.Services.InitializeDatabaseAsync();

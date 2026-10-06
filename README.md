@@ -28,6 +28,12 @@ Mesa de ayuda full-stack en .NET 10 y Blazor. Calcula el SLA sobre el calendario
 | ![Tablero con SLA en riesgo e incumplidos](docs/img/tablero.png) | ![Sugerencia del clasificador pendiente de revisión](docs/img/sugerencia-ia.png) |
 | **SLA y calendario laboral** | **Reportes** |
 | ![Reglas de SLA en horas hábiles y matriz ITIL](docs/img/sla-calendario.png) | ![Cumplimiento de SLA, MTTR y carga por agente](docs/img/reportes.png) |
+| **Detalle del ticket para el agente** | **Lo que ve el cliente, en vivo** |
+| ![Ticket resuelto con SLA cumplido, conversación y detalles](docs/img/ticket-detalle-agente.png) | ![El cliente ve la solución, puede reabrir y calificar](docs/img/ticket-detalle-cliente.png) |
+| **Alta con prioridad ITIL calculada** | **Documentación interactiva de la API** |
+| ![Formulario de nuevo ticket con la prioridad P1 calculada](docs/img/nuevo-ticket.png) | ![Documentación OpenAPI con Scalar](docs/img/api-docs.png) |
+
+<p align="center"><img src="docs/img/movil-cliente.png" alt="Portal del cliente en un teléfono: la tabla pasa a tarjetas" width="280"></p>
 
 ## Problema que resuelve
 
@@ -207,7 +213,7 @@ Otras opciones de la API: `Cors__AllowedOrigins`, `Database__ApplyMigrationsOnSt
 
 ## API
 
-- Documentación interactiva (Scalar): `http://localhost:5080/docs`
+- Documentación interactiva (Scalar, sin asistente de IA ni servidor MCP de terceros): `http://localhost:5080/docs`
 - OpenAPI: `http://localhost:5080/openapi/v1.json`
 - Colección de ejemplos: [docs/api.http](docs/api.http), ejecutable en Visual Studio o con REST Client. Se verificó completa contra el stack de Docker.
 
@@ -238,7 +244,7 @@ dotnet test --solution Helpdesk.slnx   # unitarias, bUnit e integración (las de
 | `Helpdesk.UnitTests` | 235 | Máquina de estados, calendario laboral con feriados y almuerzo, SLA con pausas, matriz ITIL, políticas de acceso, reportes, validadores y política de contraseñas. |
 | `Helpdesk.Web.Tests` | 26 | Componentes Blazor con bUnit (chips de estado, tabla de tickets, textos de SLA) y validación del `returnUrl`. |
 | `Helpdesk.IntegrationTests` | 60 | API real sobre PostgreSQL (Testcontainers): ciclo completo, BOLA, `If-Match`, rate limiting, refresh tokens, adjuntos maliciosos, SignalR, reportes y P27 simulado con WireMock. |
-| `Helpdesk.E2ETests` | 6 | Playwright contra el stack levantado: flujo en vivo con tres navegadores, transferencia de cola, tablero, permisos y sugerencia real de P27. |
+| `Helpdesk.E2ETests` | 8 | Playwright contra el stack levantado: flujo en vivo con tres navegadores, transferencia de cola, tablero, permisos, portal en el teléfono, documentación pública y sugerencia real de P27. |
 
 Las e2e se activan con variables de entorno, así que `dotnet test` sigue funcionando sin navegador:
 

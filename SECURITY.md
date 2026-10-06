@@ -62,6 +62,7 @@ Las referencias entre paréntesis son de OWASP Top 10:2025 (A), OWASP API Securi
 - Cabeceras de la API: CSP `default-src 'none'`, `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `Permissions-Policy`, COOP/CORP, HSTS y `Cache-Control: no-store`.
 - Cabeceras del front (nginx): CSP con `script-src 'self' 'wasm-unsafe-eval'`, `connect-src` limitado a la API y `frame-ancestors 'none'`.
 - CORS solo con orígenes explícitos desde el entorno; un comodín `*` se rechaza al arrancar.
+- La documentación interactiva (Scalar) se publica sin su asistente de IA, su servidor MCP ni la barra de desarrollo: no envía la definición de la API a servicios de terceros.
 - Redirección tras el login solo a rutas internas relativas: se bloquean esquemas, `//host` y `\`.
 
 ### Adjuntos (OWASP File Upload Cheat Sheet)

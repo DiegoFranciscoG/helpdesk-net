@@ -37,18 +37,26 @@ public sealed class BrowserFixture : IAsyncLifetime
     public void SkipWhenDisabled() =>
         Assert.SkipUnless(Settings.Enabled, "Define HELPDESK_E2E_WEB_URL y HELPDESK_E2E_PASSWORD para correr las pruebas e2e.");
 
-    /// <summary>Contexto nuevo (cookies y sessionStorage propios) con la sesión iniciada.</summary>
-    public async Task<IPage> LoginAsync(string email)
+    /// <summary>Contexto nuevo (cookies y sessionStorage propios) sin sesión; por defecto, pantalla de escritorio.</summary>
+    public async Task<IPage> NewPageAsync(ViewportSize? viewport = null)
     {
         var context = await _browser!.NewContextAsync(new()
         {
             BaseURL = Settings.WebUrl!.TrimEnd('/') + "/",
             Locale = "es-EC",
             TimezoneId = "America/Guayaquil",
-            ViewportSize = new() { Width = 1440, Height = 900 },
+            ViewportSize = viewport ?? new() { Width = 1440, Height = 900 },
+            IsMobile = viewport is { Width: < 768 },
+            HasTouch = viewport is { Width: < 768 },
         });
         context.SetDefaultTimeout(30_000);
-        var page = await context.NewPageAsync();
+        return await context.NewPageAsync();
+    }
+
+    /// <summary>Contexto nuevo con la sesión iniciada.</summary>
+    public async Task<IPage> LoginAsync(string email, ViewportSize? viewport = null)
+    {
+        var page = await NewPageAsync(viewport);
 
         await page.GotoAsync("login");
         await page.GetByLabel("Correo", new() { Exact = true }).FillAsync(email.Contains('@', StringComparison.Ordinal) ? email : $"{email}@{DemoDomain}");
