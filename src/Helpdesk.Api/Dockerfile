@@ -3,7 +3,7 @@
 # Todas las imágenes con versión exacta (nunca "latest").
 
 # 1) Compilar y publicar con el SDK de .NET 10. Primero solo los .csproj: la restauración queda en caché.
-FROM mcr.microsoft.com/dotnet/sdk:10.0.401-noble AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0.402-noble AS build
 WORKDIR /src
 COPY global.json Directory.Build.props Directory.Packages.props .editorconfig ./
 COPY src/Helpdesk.Domain/Helpdesk.Domain.csproj src/Helpdesk.Domain/
