@@ -22,7 +22,7 @@ RUN dotnet publish src/Helpdesk.Api/Helpdesk.Api.csproj -c Release -o /app --no-
 
 # 2) Runtime: ASP.NET Core 10.0.12 sobre Ubuntu Noble "chiseled" (sin shell ni gestor de paquetes, usuario
 #    no root "app"). La variante "-extra" conserva ICU y tzdata: la API calcula el SLA en America/Guayaquil.
-FROM mcr.microsoft.com/dotnet/aspnet:10.0.12-noble-chiseled-extra
+FROM mcr.microsoft.com/dotnet/aspnet:10.0.13-noble-chiseled-extra
 WORKDIR /app
 COPY --from=build /app .
 # Carpeta de adjuntos fuera de la base de datos, propiedad del usuario sin privilegios (montar un volumen aquí).
