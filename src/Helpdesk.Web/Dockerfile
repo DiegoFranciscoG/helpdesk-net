@@ -3,7 +3,7 @@
 # La URL de la API se inyecta al arrancar (HELPDESK_API_URL): la misma imagen sirve para local y producción.
 
 # 1) Publicar la app WebAssembly (archivos estáticos ya comprimidos en .br y .gz).
-FROM mcr.microsoft.com/dotnet/sdk:10.0.401-noble AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0.403-noble AS build
 WORKDIR /src
 COPY global.json Directory.Build.props Directory.Packages.props .editorconfig ./
 COPY src/Helpdesk.Domain/Helpdesk.Domain.csproj src/Helpdesk.Domain/
