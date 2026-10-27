@@ -18,7 +18,7 @@ RUN dotnet publish src/Helpdesk.Web/Helpdesk.Web.csproj -c Release -o /out --no-
     && rm -f /out/wwwroot/appsettings.json /out/wwwroot/appsettings.json.br /out/wwwroot/appsettings.json.gz
 
 # 2) nginx 1.30 (rama estable) sin privilegios: usuario 101, puerto 8080.
-FROM nginxinc/nginx-unprivileged:1.30.5-alpine3.24
+FROM nginxinc/nginx-unprivileged:1.31.7-alpine3.24
 COPY --chmod=0755 deploy/nginx/05-helpdesk-env.envsh /docker-entrypoint.d/05-helpdesk-env.envsh
 COPY deploy/nginx/default.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /out/wwwroot /usr/share/nginx/html
