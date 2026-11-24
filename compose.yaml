@@ -7,7 +7,7 @@ name: helpdesk-net
 
 services:
   db:
-    image: postgres:18.6-alpine3.24
+    image: postgres:18.7-alpine3.24
     environment:
       POSTGRES_DB: helpdesk
       POSTGRES_USER: helpdesk
